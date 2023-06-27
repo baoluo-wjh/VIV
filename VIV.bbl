@@ -1,0 +1,64 @@
+\begin{thebibliography}{1}
+\expandafter\ifx\csname url\endcsname\relax
+  \def\url#1{\texttt{#1}}\fi
+\expandafter\ifx\csname urlprefix\endcsname\relax\def\urlprefix{URL }\fi
+\expandafter\ifx\csname href\endcsname\relax
+  \def\href#1#2{#2} \def\path#1{#1}\fi
+
+\bibitem{jafari2020windinduced}
+M.~Jafari, F.~Hou, A.~Abdelkefi, Wind-induced vibration of structural cables,
+  Nonlinear Dynamics 100~(1) (2020) 351--421.
+\newblock \href {https://doi.org/10.1007/s11071-020-05541-6}
+  {\path{doi:10.1007/s11071-020-05541-6}}.
+
+\bibitem{li2018datadriven}
+S.~Li, S.~Laima, H.~Li, Data-driven modeling of vortex-induced vibration of a
+  long-span suspension bridge using decision tree learning and support vector
+  regression, Journal of Wind Engineering and Industrial Aerodynamics 172
+  (2018) 196--211.
+\newblock \href {https://doi.org/10.1016/j.jweia.2017.10.022}
+  {\path{doi:10.1016/j.jweia.2017.10.022}}.
+
+\bibitem{huang2019automatic}
+Z.~Huang, Y.~Li, X.~Hua, Z.~Chen, Q.~Wen, Automatic {{Identification}} of
+  {{Bridge Vortex-Induced Vibration Using Random Decrement Method}}, Applied
+  Sciences 9~(10) (2019) 2049.
+\newblock \href {https://doi.org/10.3390/app9102049}
+  {\path{doi:10.3390/app9102049}}.
+
+\bibitem{zhao2022statemonitoring}
+H.~Zhao, Y.~Ding, A.~Li, B.~Chen, X.~Zhang, State-monitoring for abnormal
+  vibration of bridge cables focusing on non-stationary responses: {{From}}
+  knowledge in phenomena to digital indicators, Measurement 205 (2022) 112148.
+\newblock \href {https://doi.org/10.1016/j.measurement.2022.112148}
+  {\path{doi:10.1016/j.measurement.2022.112148}}.
+
+\bibitem{dan2022monitoring}
+D.~Dan, H.~Li, Monitoring, intelligent perception, and early warning of
+  vortex-induced vibration of suspension bridge, Structural Control and Health
+  Monitoring 29~(5) (May 2022).
+\newblock \href {https://doi.org/10.1002/stc.2928}
+  {\path{doi:10.1002/stc.2928}}.
+
+\bibitem{he2022online}
+M.~He, P.~Liang, Y.~Wang, Z.-l. Xia, X.-y. Wu, Online automatic monitoring of
+  abnormal vibration of stay cables based on acceleration data from structural
+  health monitoring, Measurement 195 (2022) 111102.
+\newblock \href {https://doi.org/10.1016/j.measurement.2022.111102}
+  {\path{doi:10.1016/j.measurement.2022.111102}}.
+
+\bibitem{he2022identification}
+M.~He, P.~Liang, Y.~Zhang, Y.~Wang, K.-d. Wang, Identification, tracking and
+  warning of vortex induced vibration using k-means clustering method,
+  Structure and Infrastructure Engineering (2022) 1--14\href
+  {https://doi.org/10.1080/15732479.2022.2096081}
+  {\path{doi:10.1080/15732479.2022.2096081}}.
+
+\bibitem{li2017cluster}
+S.~Li, S.~Laima, H.~Li, Cluster analysis of winds and wind-induced vibrations
+  on a long-span bridge based on long-term field monitoring data, Engineering
+  Structures 138 (2017) 245--259.
+\newblock \href {https://doi.org/10.1016/j.engstruct.2017.02.024}
+  {\path{doi:10.1016/j.engstruct.2017.02.024}}.
+
+\end{thebibliography}
