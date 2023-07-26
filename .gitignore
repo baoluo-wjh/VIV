@@ -1,3 +1,6 @@
-.bbl
-.spl
-.synctex.gz
+*.bbl
+*.spl
+*.synctex.gz
+VIV.pdf
+software/data/*.csv
+res/deri/*.mat
