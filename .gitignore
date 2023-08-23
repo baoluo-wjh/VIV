@@ -3,4 +3,6 @@
 *.synctex.gz
 VIV.pdf
 software/data/*.csv
+software/data/*.jpg
+software/data/*.pdf
 res/deri/*.mat

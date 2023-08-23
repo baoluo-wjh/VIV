@@ -1,15 +1,16 @@
 % preamble
 \documentclass[preprint, 3p, times, compress, 11pt]{elsarticle}
 \usepackage{lineno, amsmath, float, graphicx, subfigure, color, multirow, 
-    algorithm, algpseudocode, setspace, caption, hyperref, booktabs} 
-\graphicspath{{res/}, {res/bridge/}, {res/cluster/}, {res/deri/}, {res/flowchart/}} 
+        algorithm, algpseudocode, setspace, caption, hyperref, booktabs} 
+\graphicspath{{res/}, {res/bridge/}, {res/classify/}, {res/deri/}, 
+        {res/flowchart/}, {res/software/data/}} 
 \captionsetup[figure]{labelfont={bf}, name={Fig.}, labelsep=period}
 \captionsetup[table]{labelfont={bf}, name={Table}, labelsep=space}
 \captionsetup[algorithm]{labelfont={bf}, name={Algorithm}, labelsep=period}
 \renewcommand{\algorithmicrequire}{\textbf{Input:}}
 \renewcommand{\algorithmicensure}{\textbf{Output:}}
 \newcommand{\tabincell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
-\modulolinenumbers[5]
+% \modulolinenumbers[5]
 \linenumbers
 \journal{MEASUREMENT}
 \bibliographystyle{elsarticle-num}
@@ -20,14 +21,13 @@
 % front matter
 \begin{frontmatter}
 % title
-\title{Vortex-induced Vibration Recognition of Bridge Cables 
-        Based on Multiple Indicators and Clustering Algorithm}
+\title{Identification of Intense Vortex-induced Vibration on Bridge Cables 
+        Applying Dynamic Indicators and Probability-based Partitioning}
 % author
 \author[tongji]{Jinghang Weng}
 \author[tongji]{Lin Chen\corref{correspond}}
 \ead{linchen@tongji.edu.cn}
 \author[tongji,lab,qizhi]{Limin Sun\corref{correspond}}
-\author[ccc]{Xiaolong Li}
 \cortext[correspond]{Corresponding author. Department of Bridge Engineering, 
     Tongji University, 1239 Siping Road, Shanghai 200092, China}
 % affiliation
@@ -36,35 +36,34 @@
 \address[lab]{State Key Laboratory of Disaster Reduction of Civil 
     Engineering, Tongji University, Shanghai 200092, China}
 \address[qizhi]{Shanghai Qi Zhi Institute, Shanghai 200092, China}
-\address[ccc]{China Communications Construction Ltd., Beijing 100101, China}
 
 % abstract
 \begin{abstract}
-Vortex-induced vibration (VIV), among all the anomalous oscillations, 
-is one of the most common jeopardies facing cable-stayed bridge cables 
-and suspension bridge cables. Typically, this kind of vibration tends 
-to cause large cable displacement and thus imposes baneful implications 
-upon cables. Therefore, it is essential to design an efficient method 
-to spontaneously recognize such vibrations and send instant warnings. 
-Recently, the Hilbert Transform (HT) are utilized to analyze and extract 
-the single-modal attribute of VIV. Albeit accurate, this method is 
-somewhat time-consuming due to the O(nlogn) time complexity. To boost 
-the efficiency, this paper proposes a derivative indicator based on 
-discrete numerical differentiation with an O(n) time complexity, thus 
-remarkably ameliorating the monitoring method and offering an obvious 
-advantage to the on-time warning. Thereafter, a novel method applying 
-multiple indicators together with various clustering algorithms is used 
-to cope with the abnormal vibration time history of a long-span 
-cable-stayed bridge, which proves both the accuracy and efficiency of 
-such a method. Moreover, a statistical analysis also demonstrates the 
-identity between the indicator extracting from HT and that deriving from 
-numerical differentiation, with respect to single-modal vibration 
-recognization. 
+Vortex-induced vibration (VIV) is one of the most common anomalous 
+oscillations faced by cables on cable-stayed bridges, suspension bridges
+and arch bridges. Typically, cable VIV is a kind of abnormal vibration 
+with large displacements and thus imposes detrimental implications 
+on cables and even the whole bridge structure. Therefore, this study 
+designs an efficient method to spontaneously recognize intense VIV 
+and send instant warnings. While the root mean square of acceleration 
+represents the intensity of vibration, another indicator deriving from 
+derivation transform is designed to quantify the degree of single-mode 
+vibration. Comparing with other equivalent coefficients, this indicator 
+can be easily calculated and is free from the interference of end effect, 
+thus enhance both the efficiency and accuracy. Subsequently, the two 
+dynamic indicators, after several algebraic transformations, are utilized 
+together to create a mixed feature (MF). Given a certain threshold, a 
+probability-based partitioning strategy considering the distribution 
+of MF is introduced to extract VIV samples from all the vibration samples, 
+hence consolidating the foundation of multi-level intense VIV warning. 
+The proposed method has been validated in VIV identification of cables on 
+a large-span cable-stayed bridge. The dynamic features of cables both
+frequently and hardly influenced by VIV are compared and discussed. 
 \end{abstract}
 
 \begin{keyword}
-Bridge cable \sep Vortex-induced vibration \sep Derivative transform \sep 
-Circular queue \sep Clustering algorithm. 
+Bridge cable \sep Vortex-induced vibration \sep Derivation transform \sep 
+Dynamic indicator \sep Probability-based partitioning \sep Instant warning. 
 \end{keyword}
 \end{frontmatter}
 
@@ -73,7 +72,7 @@ Circular queue \sep Clustering algorithm.
 
 Known for its frequent occurrence in cable-stayed bridges and suspension 
 bridges, vortex-induced vibration (VIV) usually brings about large cable 
-displacement and follows irrevocable detrimental implications. Therefore, 
+displacement and follows irrevocable detrimental influences. Therefore, 
 it is essential to conceive an efficacious method that can spontaneously 
 recognize VIV and send instant warnings. Generated by vortices 
 periodically separating from either side of a bluff body when fluid 
@@ -90,25 +89,28 @@ frequency of the airflow, the diameter of a bridge
 cable, and the speed of the airflow, respectively \cite{jafari2020windinduced}. 
 
 Traditionally, three major methods are frequently utilized to explore 
-the principle of VIV, i.e., theoretical analyses, computational fluid 
+the characteristics of VIV, i.e., theoretical analyses, computational fluid 
 dynamics simulations, and wind tunnel tests. Nevertheless, the mechanism 
 underlying VIV is still uncovered due to the high nonlinearity of 
 airflow and cable-fluid interaction. Nowadays, the prevalence of 
-Structural Health Monitoring (SHM) system offers a tremendous 
+structural health monitoring (SHM) system offers a tremendous 
 opportunity for the big-data-based study of cable vibration. Due to 
 their convenience and relatively low price, accelerometers are widely 
-used in SHM systems as the major data resources. The root mean square (RMS) 
-of acceleration time history is then deemed as the prime indicator to 
-quantify the cable vibration intensity. However, more information is 
-deserved to distinguish the VIV from other anomalies, since multiple 
-kinds of abnormal vibrations could cause large-acceleration vibrations. 
+deployed in SHM systems as the major data resources. The root mean square 
+(RMS) of acceleration time history is then deemed as the prime indicator 
+to quantify the cable vibration intensity. However, more information is 
+desired to distinguish VIV from other anomalies with intense oscillations. 
+
+\textcolor{red}{
+    ref: why intense VIV is single-mode
+}
+
 Typically, researchers employed the Fourier transform to obtain either 
 the frequency spectrum or power spectrum, which can be used to analyze 
 the excited modes. The spectrum with a single high peak indicates the 
 occurrence of VIV since this kind of vibration usually comprises only 
 one major vibration frequency \cite{li2018datadriven}. 
-
-Recently, scholars presented numerous innovative methods to detect VIV 
+Recently, scholars presented several innovative methods to detect VIV 
 from acceleration time history. Huang, Z. et al. \cite{huang2019automatic} 
 employs Random Decrement Method to deepen the difference between VIV 
 and normal ambient vibration, thus making it more precise for VIV 
@@ -117,13 +119,13 @@ the so-called abnormal vibration, i.e., the VIV, Zhao, H. et al.
 \cite{zhao2022statemonitoring} takes advantage of Gaussian mixture 
 modeling of the envelope of time history. After that, the stationary 
 section is selected to extract modal parameters. Among all these methods, 
-the novel algorithm based on the Hilbert Transform (HT) 
+the novel algorithm based on the Hilbert transform (HT) 
 is one of the most prevalent. A composite complex analytic signal, whose 
 real part is the original signal while the imaginary part represents the 
 HT of the original, is introduced into this method. The projection of 
 such a signal on the complex plain reflects the constituent of the 
 vibration, as Dan, D. and Li, H. \cite{dan2022monitoring} suggest, the 
-more it resembles a hollow ring, the more exact its single-mode attribute, 
+more it resembles a hollow ring, the more remarkable its single-mode feature, 
 and thus the more exact the occurrence of vortex-induced vibration. 
 Although the method that employs HT is precise, it is somewhat 
 time-consuming, since based on the Fast Fourier transform, whose time 
@@ -132,9 +134,10 @@ proposes a derivative indicator based on discrete numerical
 differentiation, which has an O(n) time complexity, thus obviously 
 lowering the calculative time and bringing about a dependable on-time warning. 
 
-Furthermore, since any individual indicator might fail to distinguish VIV 
-from normal vibration due to complicated environmental effects, more 
-indicators should be taken into consideration. He, M. et al. \cite{he2022online} 
+Furthermore, since any individual indicator merely denotes either the 
+intensity or the degree of single-mode, more than one indicator should 
+be analyzed for the identification of intense VIV. 
+He, M. et al. \cite{he2022online} 
 present two indicators based on the power spectrum and HT analytical 
 signal respectively. These two indicators are then employed to 
 differentiate VIV and normal vibration based on a pre-set line that 
@@ -158,25 +161,20 @@ accordingly, and the result proves both the accuracy and efficiency of
 such a method.
 
 The remaining sections are organized as follows. The methodology of VIV 
-identification is explicated in Sec.~\ref{sec:method}, where several 
-indicators together with varied clustering algorithms are introduced. 
+identification is explicated in Sec.~\ref{sec:method}, where two indicators 
+together with a probability-based partitioning strategy are introduced. 
 In Sec.~\ref{sec:experiment}, these methods are carried out to identify 
-the VIV occurring in a long-span cable-stayed bridge cable, whose 
-long-time acceleration time history is recorded by a SHM system. Finally, 
-conclusions are drawn in Sec.~\ref{sec:conclusion}.
+the VIV occurring in cables on a long-span cable-stayed bridge, whose 
+SHM system has recorded the long-time acceleration time history of several
+cables. Finally, conclusions are drawn in Sec.~\ref{sec:conclusion}.
 
 \section{Automated cable VIV identification method}
 \label{sec:method}
 
-\subsection{Key indicators for VIV recognization} 
+\subsection{Key indicators to represent vibration features} 
+  
 
-To identify VIV from lengthy acceleration time history recorded by the SHM 
-system, multiple indicators are demanded, among which the time domain 
-feature and frequency domain feature are of vital importance. In the 
-following content, three key indicators defined by the features of the 
-two domains will be briefly explained. 
-
-\subsubsection{Root mean square of acceleration time history}
+\subsubsection{RMS to indicate the intensity of vibration}
 
 When VIV occurs on a cable, its vibration is usually much more intense 
 than in normal circumstances. Therefore, the RMS of a piece of 
@@ -191,7 +189,11 @@ of cable vibration, which can be calculated by
 where $N$ is the length of the time series. Generally, the larger the RMS, 
 the more likely a certain kind of abnormal vibration is to occur.
 
-\subsubsection{Hollow coefficient of Hilbert analytical signal}
+\subsubsection{Indicators to quantify the single-mode characteristic}
+
+% Peak ratio of spectrum
+
+% Hollow coefficient of Hilbert analytical signal
 
 The RMS, though a helpful indicator to suggest the presence of abnormal 
 vibration, purveys no additional information to discriminate VIV from other 
@@ -224,7 +226,7 @@ if a cable is under an ideal VIV situation, i.e., the original acceleration
 signal is a sine function, the projection of its Hilbert analytical 
 signal in the complex plane will be a circle (see Fig.~\ref{fig:proj_hilb}~(a), 
 where all the physical quantities are normalized in advance). Practically, 
-due to the wideband components of the force caused by the vortex and the 
+due to the broadband components of the force caused by the vortex and the 
 influence of environmental noises, the projection of the analytical 
 signal is a ring with an inner radius R1 and outer radius R2, as shown 
 in Fig.~\ref{fig:proj_hilb}~(b).
@@ -257,7 +259,7 @@ It is understandable that the more the HCH is closer to one, the more
 similar the ring is to a circle, and thus the more obvious the emergence 
 of single modal vibration is. 
 
-\subsubsection{Hollow coefficient of Derivative analytical signal}
+% Hollow coefficient of Derivative analytical signal
 
 The analytical signal applying the signal transformed by HT as the 
 imaginary part is indeed useful. Despite that, the long time it spent 
@@ -313,44 +315,57 @@ whose variables have identical meanings to those in Eq.~\eqref{eq:HCH}.
     \label{fig:proj_deri}
 \end{figure}
 
-\subsection{Brief introduction of clustering algorithm for sample classification} 
+\textcolor{red}{
+    merits: O(n), no end effect, circular queue
+}
 
-\subsubsection{KMeans algorithm}
+\subsection{Sample classification based on probability distribution and 
+        outlier threshold}
 
-The KMeans algorithm might be the simplest and most famous clustering 
-algorithm among all of them. First of all, a hyper-parameter k, which 
-means the number of clustering centroids, should be determined in advance. 
-After that, the algorithm will automatically portion all data points 
-into k classes, such that the sum of each point's distance to its 
-nearest centroid gradually approaches the minimum value. This process 
-might iterate for numerous times and the centroids will be dynamically 
-relocated until no data point changes its classification.
+\textcolor{red}{
+    why lower convex function?
+    flowchart!
+}
 
-\subsubsection{DBSCAN algorithm}
+\subsubsection{Typical distribution of RMS and HCD}
 
-DBSCAN is an abbreviation of density-based spatial clustering of 
-applications with noise. It can be inferred from its full name that this 
-method is based on the density of data points that distribute in the 
-sample space. To utilize this algorithm, two major hyper-parameters are 
-entailed, i.e., the density threshold and the neighbor radius. One of the 
-most important advantages of DBSCAN is that it can rule out a substantial 
-number of noise and is thus robust to outliers, which is essential when 
-dealing with practical engineering projects that are vulnerable to 
-environmental noises, such as cable VIV detection. 
+\subsubsection{Logarithm transformation of RMS and HCD to extend data 
+        distribution}
+
+\subsubsection{Mixed Feature of TRMS and THCD}
+
+\textcolor{red}{
+    1. PCD
+    if cannot PCD, usually not VIV 
+    2. distribution
+}
+
+\subsubsection{Sample partitioning according to the distribution of the 
+        mixed feature}
+
+\subsubsection{Probability-based boundary curve in the RMS-HCD plain}
+
+\textcolor{red}{
+    lots of math...
+}
+
+\subsection{Multi-level VIV warning applying RMS and HCD}
+
+\subsubsection{VIV warning with several probability thresholds}
+
+\subsubsection{VIV warning considering the abstract values of RMS and HCD}
 
 \section{Application to a long-span cable-stayed bridge}
 \label{sec:experiment}
 
-\subsection{The Tongling Yangtze River Bridge}
+\subsection{Description of the Tongling Yangtze River Bridge and its SHM system}
 
 The methods and algorithms proposed in Sec.~\ref{sec:method} are 
 applied for cable VIV identification of the Tongling Yangtze River 
-(TYR) Bridge. Locating in Tongling City, Anhui province, the TYR bridge 
+(TYR) Bridge. Locating in Tongling City, Anhui province, China, the TYR bridge 
 is a long-span cable-stayed bridge, whose cables intermittently suffer 
 from VIV. Therefore, this research might help the bridge owner to 
 detect VIV and send instant warnings.
-
-\subsection{Description of Data Processing}
 
 One cable in the TYR Bridge, which is attached to an accelerometer 
 named ACC-C01-01, is applied to explicate the whole process. The original 
@@ -365,7 +380,40 @@ get the HCH and HCD. Finally, all the indicators, i.e., the RMS, HCH,
 and HCD are considered together by KMeans and DBSCAN to classify VIV and 
 normal vibration. 
 
-\subsection{Illustration of typical VIV and ambient vibration} 
+\subsection{Sample acquisition and feature analysis}
+
+\subsubsection{Data Processing and parameter setting}
+
+\subsubsection{Statistical analysis to attest the equivalence of HCH and HCD}
+
+Fig.~\ref{fig:time_freq_hilb_deri} indicates not only that the 
+projections of the two analytical signals during VIV are distinct from 
+that during non-VIV conditions, but that the two are almost identical 
+when dealing with the same period of a signal. On the one hand, 
+projections during the non-VIV are similar solid circles. On the other 
+hand, those during the VIV are similar hollow rings with approximately 
+equal inner radii and outer radii.
+
+To further confirm the identity of the derivative transform and HT when 
+recognizing VIV, Fig.~\ref{fig:HCH_HCD} plots all the samples into an 
+HCD-HCH coordinate system, where all the scatter points almost distribute 
+in the line $HCD = HCH$, which means these two indicators offer 
+the same information to detect the single modality. 
+Therefore, it is reasonable to replace 
+the complicated HT with the much more efficient derivative transform. 
+Another matter that demands attention is that all the normal vibration 
+samples have an almost zero-value HCD and an almost zero-value HCH, 
+making themselves concentrated in the coordinate origin and covered by 
+some VIV sample points.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.64\textwidth]{viv.jpg}
+    \caption{Scatter diagram to compare HCH and HCD.}
+    \label{fig:HCH_HCD}
+\end{figure}
+
+\subsection{Illustration of typical VIV and non-VIV} 
 
 As mentioned above, each one-hour continuous time history is sliced by 
 a ten-minute time window. It is noteworthy that since the slide step of 
@@ -401,86 +449,17 @@ of large amplitude and approximately unimodal vibration.
     \label{fig:time_freq_hilb_deri}
 \end{figure}
 
-\subsection{Statistic proof of the equivalence between HT and DT} 
+\subsection{Recognition of intense VIV on different cables}
 
-Fig.~\ref{fig:time_freq_hilb_deri} indicates not only that the 
-projections of the two analytical signals during VIV are distinct from 
-that during non-VIV conditions, but that the two are almost identical 
-when dealing with the same period of a signal. On the one hand, 
-projections during the non-VIV are similar solid circles. On the other 
-hand, those during the VIV are similar hollow rings with approximately 
-equal inner radii and outer radii.
+\subsubsection{Cables with massive intense vibration sampels}
 
-To further confirm the identity of the derivative transform and HT when 
-recognizing VIV, Fig.~\ref{fig:HCH_HCD} plots all the samples into an 
-HCD-HCH coordinate system, where all the scatter points almost distribute 
-in the line $HCD = HCH$, which means these two indicators offer 
-the same information to detect the single modality. 
-Therefore, it is reasonable to replace 
-the complicated HT with the much more efficient derivative transform. 
-Another matter that demands attention is that all the normal vibration 
-samples have an almost zero-value HCD and an almost zero-value HCH, 
-making themselves concentrated in the coordinate origin and covered by 
-some VIV sample points.
+\subsubsection{Cables with almost no intense vibration samples}
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=0.64\textwidth]{HCH-HCD.jpg}
-    \caption{Scatter diagram to compare HCH and HCD.}
-    \label{fig:HCH_HCD}
-\end{figure}
+\subsection{Parametric analysis}
 
-\subsection{VIV identification using various clustering algorithms} 
+\subsubsection{Order coefficient in the logarithm transformation}
 
-\subsubsection{Classification result of KMeans}
-
-As mentioned above, RMS is used to represent the intensity of vibration, 
-while both HCD and HCH quantify the single-modal degree. Herein, HCD is 
-selected due to the low time complexity of the underlying derivative 
-transform. The manual-labeled result is shown in 
-Fig.~\ref{fig:HCH_HCD}~(a).
-
-The KMeans algorithm is then applied to identify the VIV and non-VIV by 
-classifying the sample points in the HCD-RMS coordinate system into two 
-classes. Displayed in Fig.~\ref{fig:label_kmeans}~(b), 
-the diagram indicates a considerable 
-difference between the manual labels and the KMeans classification results 
-that many VIV sample points with an HCD of approximately zero and an RMS 
-ranging from 50 to 65 are misclassified.
-
-\begin{figure}[ht]
-    \centering
-    \subfigure[Label]{
-        \includegraphics[width=0.48\textwidth]{RMS-HCD.jpg} 
-    }
-    \subfigure[KMeans]{
-        \includegraphics[width=0.48\textwidth]{RMS-HCD-KMeans.jpg}
-    }
-    \caption{The classification of VIV and normal vibration using RMS and HCD.}
-    \label{fig:label_kmeans}
-\end{figure}
-
-\subsubsection{Classification result of DBSCAN}
-
-Similarly, DBSCAN is also introduced for VIV recognization, while the 
-result is shown in Fig.~\ref{fig:label_dbscan}~(b). Herein, 
-the neighbor radius is set to 0.075, while the 
-density threshold is set to one-tenth of the total number of samples. It 
-is noteworthy that the DBSCAN classification manifests much more 
-consistency with the manual label by contrast with the KMeans. Therefore, 
-DBSCAN might be the better method for VIV identification. 
-
-\begin{figure}[ht]
-    \centering
-    \subfigure[Label]{
-        \includegraphics[width=0.48\textwidth]{RMS-HCD.jpg} 
-    }
-    \subfigure[DBSCAN]{
-        \includegraphics[width=0.48\textwidth]{RMS-HCD-DBSCAN.jpg}
-    }
-    \caption{The classification of VIV and normal vibration using RMS and HCD.}
-    \label{fig:label_dbscan}
-\end{figure}
+\subsubsection{Thresholds for sample classification}
 
 \clearpage
 
@@ -496,15 +475,16 @@ warning of VIV in the future and the following conclusions can be drawn.
 
 \begin{enumerate}[(1)]
     \item 
-RMS and HCH demonstrate high accuracy to quantify the vibration intensity 
-and mono-modality of a certain signal. 
+RMS and HCH demonstrate high accuracy to quantify the intensity 
+and mono-modality of a period of vibration. While offering nearly the 
+same information compared with the HCH, the HCD is much more efficient 
+since it is based on the derivative transform, whose time complexity is O(n).
     \item
-While offering nearly the same information compared with the HCH, the 
-HCD is much more efficient, since based on the derivative transform, 
-whose time complexity is O(n).
-    \item
-DBSCAN-based VIV-recognization is much more precise compared with that 
+Probability-based classification is much more precise compared with that 
 depending on the KMeans.
+    \item 
+The method is based on past data and thus highly contingent on the specific 
+environment.
 \end{enumerate}
 
 % invoke
