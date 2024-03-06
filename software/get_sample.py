@@ -13,6 +13,9 @@ warnings.filterwarnings('error')
 plt.rc('font', family='Times New Roman')
 plt.rc('text', usetex = True)
 
+features = ["RMS", "PRS", "HCH", "HCD", "CCH", "CCD", "MPRS", "MHCH", "AMHCH"]
+feature_num = len(features)
+
 def find_all_mat(root):
     ''' 
     purpose: find all mat files in root 
@@ -34,43 +37,41 @@ def find_all_mat(root):
                 mat_list.append(file_path)
     return mat_list
 
-def cope_all_mat(mat_list, fs, minute_interval=5):
+def cope_all_mat(mat_list, fs, app_fund_arr, minute_interval=5):
     ''' 
     purpose: cope with all mat files by multiprocessing, 
              export RMS and HCD as csv files
-    params: file_path - mat file's path
+    params: mat_list - all mat files
             fs - sampling frequency
+            app_fund_arr - array of approximate fundamental frequency
             minute_interval - time interval in minutes
     return: None
     '''
 
-    date_set = set()
     pool = ProcessPoolExecutor()  # max_workers=1
     for file_path in mat_list:  
         # "../HangZhou/south/2022-12-31 18-VIC.mat"
         date = file_path.rsplit('/', 1)[-1].split(' ')[0]
-        # if date != "2022-01-04":
+        # if date != "2022-07-02":
         #     continue
         # if date.split('-')[1] != "01":
         #     continue
-        if date not in date_set:
-            date_set.add(date)
-            # print(f"{date} start")
-        pool.submit(cope_mat, file_path, fs, minute_interval, False)
+        pool.submit(cope_mat, file_path, fs, app_fund_arr, minute_interval)
     pool.shutdown(True)
 
-def cope_mat(file_path, fs, minute_interval=5, mp=True):
+def cope_mat(file_path, fs, app_fund_arr=None, minute_interval=5):
     ''' 
     purpose: cope with a mat file, export RMS and HCD as csv files
     params: file_path - mat file's path
             fs - sampling frequency
+            app_fund_arr - array of approximate fundamental frequency
             minute_interval - time interval in minutes
     return: None
     '''
 
     mat_dir, mat_name = os.path.split(file_path)
     if os.path.exists(os.path.join(mat_dir, 
-            f"{mat_name.rsplit('-', 1)[0]}_HCD.csv")): return
+            f"{mat_name.rsplit('-', 1)[0]}_RMS.csv")): return
     
     try:
         acc_2d = loadmat(file_path)["data"].astype(np.float64)  # (50*60*60=180000, 36)
@@ -78,48 +79,37 @@ def cope_mat(file_path, fs, minute_interval=5, mp=True):
         acc_2d = np.transpose(File(file_path, 'r')["data"]).astype(np.float64)
 
     num_cable = acc_2d.shape[1]
+
+    if app_fund_arr is None:
+        app_fund_arr = np.full((num_cable,), 0.5)  # default app_fund: 0.5 Hz
     
-    # concurrent container
-    manager = Manager()
-    con_lock = manager.RLock()
-    RMS_2d = manager.list([manager.list() for _ in range(num_cable)])
-    HCD_2d = manager.list([manager.list() for _ in range(num_cable)])
+    # feature_2d_lst[0] is RMS_2d: [[] for _ in range(num_cable)]
+    feature_2d_lst = [[[] for _ in range(num_cable)] for _ in range(feature_num)]
 
-    if mp:  # concurrent process
-        pool = ProcessPoolExecutor()  # max_workers=16
-        for cable_index in range(num_cable):  # every cable in 60 min
-            acc = acc_2d[:, cable_index]
-            pool.submit(cope_cable, cable_index, fs, minute_interval, acc, 
-                        con_lock, RMS_2d, HCD_2d)
-        pool.shutdown(True)
-    else:
-        for cable_index in range(num_cable):  # every cable in 60 min
-            acc = acc_2d[:, cable_index]
-            try:
-                cope_cable(cable_index, fs, minute_interval, acc, con_lock, RMS_2d, HCD_2d)
-            except:
-                print(f"mat_name: {mat_name}")
+    for cable_index in range(num_cable):  # every cable in 60 min
+        acc = acc_2d[:, cable_index]
+        try:
+            cope_cable(cable_index, app_fund_arr[cable_index], 
+                       fs, minute_interval, acc, feature_2d_lst)
+        except:
+            print(f"mat_name: {mat_name}")
 
-    # transform concurrent list to normal listmat_dir
-    RMS_2d = [list(inner_lst) for inner_lst in RMS_2d]  # 36 * (60/5)
-    HCD_2d = [list(inner_lst) for inner_lst in HCD_2d]
+    # save RMS, PRS...
+    for (f_2d, ft) in zip(feature_2d_lst, features):
+        pd.DataFrame(f_2d).to_csv(os.path.join(mat_dir, 
+                f"{mat_name.rsplit('-', 1)[0]}_{ft}.csv"), header=None, index=None)
 
-    # save RMS, HCD information
-    pd.DataFrame(RMS_2d).to_csv(os.path.join(mat_dir, 
-            f"{mat_name.rsplit('-', 1)[0]}_RMS.csv"), header=None, index=None)
-    pd.DataFrame(HCD_2d).to_csv(os.path.join(mat_dir, 
-            f"{mat_name.rsplit('-', 1)[0]}_HCD.csv"), header=None, index=None)
+    print(f"{mat_name} finished")
 
-def cope_cable(cable_index, fs, minute_interval, acc, con_lock, RMS_2d, HCD_2d):
+def cope_cable(cable_index, app_fund, fs, minute_interval, acc, feature_2d_lst):
     ''' 
     purpose: cope with single cable
     params: cable_index - cable index
+            app_fund - approximate fundamental frequency
             fs - sampling frequency
             minute_interval - time interval in minutes
             acc - acceleration time history
-            con_lock - concurrent lock
-            RMS_2d - shared RMS
-            HCD_2d - shared HCD
+            feature_2d_lst - [RMS_2d, PRS_2d, ...]
     return: None
     '''
 
@@ -128,103 +118,120 @@ def cope_cable(cable_index, fs, minute_interval, acc, con_lock, RMS_2d, HCD_2d):
     for i in range(acc.shape[0] // interval):
 
         try:
-            error_flag, RMS, HCD = calc_VIV(acc[interval*i: interval*(i+1)], fs)
+            error_flag, RMS, PRS, HCH, HCD, CCH, CCD, PRSM, HCHM, AHCHM = calc_VIV(
+                acc[interval*i: interval*(i+1)], fs, app_fund
+            )
         except:
             print(f"cable_index: {cable_index}, time_interval_index: {i}")
             raise RuntimeError()
 
-        if error_flag:
+        if error_flag:  # 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
             # error mark
-            HCD += 10
+            RMS = -1.
 
-        con_lock.acquire()
-        RMS_2d[cable_index].append(RMS) 
-        HCD_2d[cable_index].append(HCD)
-        con_lock.release()
+        for (f_2d, ft) in zip(feature_2d_lst, [
+                RMS, PRS, HCH, HCD, CCH, CCD, PRSM, HCHM, AHCHM]):
+            f_2d[cable_index].append(ft)
 
 def find_all_csv(root):
     ''' 
     purpose: find all csv files in root 
     params: root - root path  
-    return: RMS_csv_list - all RMS csv files in root
-            HCD_csv_list - all HCD csv files in root
+    return: feature_csv_lst - all feature csv files in root
     '''
 
-    RMS_csv_list = []
-    HCD_csv_list = []
+    # feature_csv_lst = [RMS_csv_list, PRS_csv_list, ...]
+    feature_csv_lst = [[] for _ in range(feature_num)]
     for file in os.listdir(root):
         file_path = os.path.join(root, file)
         if os.path.isdir(file_path):
-            new_RMS_csv, new_HCD_csv = find_all_csv(file_path)
-            RMS_csv_list.extend(new_RMS_csv)
-            HCD_csv_list.extend(new_HCD_csv)
+            new_feature_csv_lst = find_all_csv(file_path)
+            for i in range(feature_num):
+                feature_csv_lst[i].extend(new_feature_csv_lst[i])
         else:
             file_name, ext = file.rsplit('.', 1)  # 2022-07-01 00_HCD.csv
             if ext != "csv":
                 continue
             time, kind = file_name.rsplit('_', 1)
-            if kind == "RMS":
-                RMS_csv_list.append(file_path)
-            elif kind == "HCD":
-                HCD_csv_list.append(file_path)
-    return RMS_csv_list, HCD_csv_list
+            for i in range(feature_num):
+                if kind == features[i]:
+                    feature_csv_lst[i].append(file_path)
+                    break
+    return feature_csv_lst
 
-def merge_RMS_HCD(RMS_csv_list, HCD_csv_list, csv_dir):
+def _clear_csv(root):
+    feature_csv_lst = find_all_csv(root)
+    for csv_list in feature_csv_lst:
+        for csv_file in csv_list:
+            os.remove(csv_file)
+
+def merge_one_feature(feature_csv, csv_dir):
     ''' 
-    purpose: find all csv files in root 
-    params: RMS_csv_list - all RMS csv files in root
-            HCD_csv_list - all HCD csv files in root
+    purpose: merge one feature
+    params: feature_csv - all the csv files of one feature
             csv_dir - the directory of merged csv files
     return: None
     '''
 
-    for file in os.listdir(csv_dir):
-        if file.rsplit('.', 1)[-1] == "csv":
-            return
+    feature_2d = pd.DataFrame()
+    for ft_file in sorted(feature_csv):
+        feature_2d = pd.concat([feature_2d, pd.read_csv(ft_file, 
+                header=None, dtype=np.float64).fillna(0)], axis=1)  # (36, 60)
+    feature_type = feature_csv[0].rsplit('.', 1)[0].rsplit('_', 1)[-1]
+    feature_2d.to_csv(os.path.join(csv_dir, f"{feature_type}.csv"), 
+                      header=None, index=None)
 
-    date_set = set()
+def merge_RMS_PRS_etc(feature_csv_lst, csv_dir):
+    ''' 
+    purpose: merge all the features
+    params: feature_csv_lst - all feature csv files in root
+            csv_dir - the directory of merged csv files
+    return: None
+    '''
 
-    RMS_2d = pd.DataFrame()
-    HCD_2d = pd.DataFrame()
-    for (RMS_file, HCD_file) in zip(RMS_csv_list, HCD_csv_list):
-        RMS_2d = pd.concat([RMS_2d, pd.read_csv(RMS_file,  # (36*12)
-                header=None, dtype=np.float64).fillna(0)], axis=1) 
-        HCD_2d = pd.concat([HCD_2d, pd.read_csv(HCD_file, 
-                header=None, dtype=np.float64).fillna(0)], axis=1) 
-        date = HCD_file.rsplit('/', 1)[-1].split(' ', 1)[0]
-        if date not in date_set:
-            date_set.add(date)
-            print(f"{date} merged")
-
-    RMS_2d = pd.DataFrame(RMS_2d.values.T)  # (36 * 12n) -> (12n * 36)
-    HCD_2d = pd.DataFrame(HCD_2d.values.T)
-    for i in range(RMS_2d.values.shape[1]):
-        pd.concat([RMS_2d[RMS_2d.columns[i]], HCD_2d[HCD_2d.columns[i]]], 
-                  axis=1).to_csv(os.path.join(csv_dir, "ch%02d.csv" % (i+1)), 
-                                 header=["RMS", "HCD"], index=None)
+    pool = ProcessPoolExecutor()
+    for i in range(feature_num):
+        pool.submit(merge_one_feature, feature_csv_lst[i], csv_dir)
+    pool.shutdown(True)
+    feature_2d_lst = []
+    for i in range(feature_num):
+        feature_2d = pd.read_csv(os.path.join(csv_dir, f"{features[i]}.csv"), header=None)
+        feature_2d_lst.append(feature_2d)
+    # feature_2d_lst: (feature_num, 36, 60n) -> (feature_num, 60n, 36)
+    feature_2d_lst = [pd.DataFrame(feature_2d.values.T) for feature_2d in feature_2d_lst]
+    for i in range(feature_2d_lst[0].values.shape[1]):  # cable num
+        cable_2d = pd.DataFrame()
+        for j in range(feature_num):
+            cable_2d = pd.concat([cable_2d, feature_2d_lst[j].iloc[:, [i]]], axis=1)
+        cable_2d.to_csv(os.path.join(csv_dir, "ch%02d.csv" % (i+1)), header=features, index=None)
+    for i in range(feature_num):
+        os.remove(os.path.join(csv_dir, f"{features[i]}.csv"))
 
 def main():
-    root = "../HangZhou/north"  # north
+    root = "../../raw-data/Tongling"
     fs = 50
     minute_interval = 1
+    # app_fund_arr = np.full((36,), 0.5)  # default app_fund: 0.5 Hz
+    app_fund_arr = np.array([
+        0.58, 0.59, 0.51, 0.58, 0.71,
+        0.68, 0.60, 0.55, 0.51, 0.45, 
+        0.54, 0.58, 0.69, 0.75, 0.56, 
+        0.53, 0.61, 0.55, 0.70, 0.68,
+        0.58, 0.54, 0.52, 0.51, 0.55, 
+        0.59, 0.69, 0.73, 0.59, 0.69, 
+        0.53, 0.57, 0.57, 0.53, 0.60, 
+        0.56
+    ])
+
+    # _clear_csv(root) 
+    # return
+
+    # step 1: process mat
     mat_list = sorted(find_all_mat(root))  
-    # date_set = set()
-    # for mat_file in mat_list:
-    #     # "../HangZhou/south/2022-12-31 18-VIC.mat"
-    #     date = mat_file.rsplit('/', 1)[-1].split(' ')[0]  
-    #     if date not in date_set:
-    #         date_set.add(date)
-    #         # print(f"{date} start")
-    #     if date != "2022-01-04":
-    #         continue
-    #     cope_mat(mat_file, fs, minute_interval)
-    cope_all_mat(mat_list, fs, minute_interval)
-    RMS_csv_list, HCD_csv_list = find_all_csv(root)
-    RMS_csv_list = sorted(RMS_csv_list)
-    HCD_csv_list = sorted(HCD_csv_list)
-    # print(list(zip(RMS_csv_list, HCD_csv_list)))
-    csv_dir = "./src"
-    merge_RMS_HCD(RMS_csv_list, HCD_csv_list, csv_dir)
+    cope_all_mat(mat_list, fs, app_fund_arr, minute_interval)
+    # step 2: merge
+    feature_csv_lst = find_all_csv(root)
+    merge_RMS_PRS_etc(feature_csv_lst, csv_dir="./data")
 
 if __name__ == "__main__":
     t1 = time()

@@ -21,8 +21,8 @@
 % front matter
 \begin{frontmatter}
 % title
-\title{Identification of Intense Vortex-induced Vibration on Bridge Cables 
-        Applying Dynamic Indicators and Probability-based Partitioning}
+\title{Identification of Intense Vortex-Induced Vibration on Bridge Cables 
+        Applying Integrated Dynamic Indicator and Multi-Strategy Classification}
 % author
 \author[tongji]{Jinghang Weng}
 \author[tongji]{Lin Chen\corref{correspond}}
@@ -126,7 +126,7 @@ HT of the original, is introduced into this method. The projection of
 such a signal on the complex plain reflects the constituent of the 
 vibration, as Dan, D. and Li, H. \cite{dan2022monitoring} suggest, the 
 more it resembles a hollow ring, the more remarkable its single-mode feature, 
-and thus the more exact the occurrence of vortex-induced vibration. 
+and thus the more likely the occurrence of VIV. 
 Although the method that employs HT is precise, it is somewhat 
 time-consuming, since based on the Fast Fourier transform, whose time 
 complexity is O(nlogn). To enhance the time efficiency, this paper 
@@ -135,7 +135,7 @@ differentiation, which has an O(n) time complexity, thus obviously
 lowering the calculative time and bringing about a dependable on-time warning. 
 
 Furthermore, since any individual indicator merely denotes either the 
-intensity or the degree of single-mode, more than one indicator should 
+intensity or the degree of single-mode (DSM), more than one indicator should 
 be analyzed for the identification of intense VIV. 
 He, M. et al. \cite{he2022online} 
 present two indicators based on the power spectrum and HT analytical 
@@ -171,8 +171,33 @@ cables. Finally, conclusions are drawn in Sec.~\ref{sec:conclusion}.
 \section{Automated cable VIV identification method}
 \label{sec:method}
 
+As previously mentioned, microwave radar can measure the 
+displacements of a group of cables simultaneously. Recalling that the 
+attention here is paid to cables with a relatively large length and a 
+negligible bending stiffness. The time history of cable displacement at one position is 
+sufficient for force identification with known cable length and mass per 
+unit length. Generally, the design cable force is also known and thus 
+can be used as a reference. Therefore, the signal processing for force 
+identification begins with the raw displacement, and the steps are 
+illustrated in Fig.~\ref{fig:flowchart}. The raw data recorded by the 
+microwave radar are first transformed into the frequency domain by FFT and 
+then passed through a high-pass filter to eliminate low-frequency 
+components that are affected by noise and girder vibration. Two critical 
+steps are followed, i.e., frequency picking and order identification of 
+the picked frequencies. With these modal frequencies, the least square 
+regression is used to determine the force \cite{zui1996practical}. The 
+proposed methods used for the two critical steps are explicated in 
+Sec.~\ref{subsect-FSM} and Sec.~\ref{subsect-WHV} respectively.
+
+% \begin{figure}[ht]
+%     \centering
+%     \includegraphics[width=1.0\textwidth]{flowchart.jpg}
+%     \caption{Flowchart of the instant warning for intensive cable VIV.}
+%     \label{fig:flowchart}
+% \end{figure}
+
 \subsection{Key indicators to represent vibration features} 
-  
+\label{sec:indicator}
 
 \subsubsection{RMS to indicate the intensity of vibration}
 
@@ -191,15 +216,37 @@ the more likely a certain kind of abnormal vibration is to occur.
 
 \subsubsection{Indicators to quantify the single-mode characteristic}
 
-% Peak ratio of spectrum
+The RMS, though a sufficient indicator to suggest whether an intensive 
+vibration happens, purveys no additional information to 
+discriminate VIV from other abnormal vibrations. 
 
-% Hollow coefficient of Hilbert analytical signal
+To extract the most remarkable feature of VIV, i.e., the tendency toward 
+single-mode vibration, several indicators have been introduced to quantify 
+the DSM. Generally, the eigen-frequencies of a cable can be identified 
+from its Fourier spectrum or power spectrum of the 
+acceleration time history. Higher the major peak is than other secondary 
+peaks, greater the DSM is \cite{he2022online}. Therefore, the peak ratio 
+of spectrum (PRS) is designed 
+to formulate this correlation, which is defined as 
 
-The RMS, though a helpful indicator to suggest the presence of abnormal 
-vibration, purveys no additional information to discriminate VIV from other 
-large-amplitude abnormal vibrations. Therefore, the single-modal property 
-of large-amplitude VIV is taken into consideration by applying HT, 
-which is demonstrated by 
+\begin{equation}
+    PRS = \frac{H_2}{H_1}, 
+    \label{eq:PRS}
+\end{equation}
+
+where $H_1$ and $H_2$ are the heights of the most and second highest peaks, 
+as illustrated in Fig.~\ref{fig:PRS}.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1.0\textwidth]{PRS.jpg}
+    \caption{Fourier spectrum with a highest peak and a second highest peak.}
+    \label{fig:PRS}
+\end{figure}
+
+In addition to FFT, HT are recently employed to quantify DSM. This transformation 
+is defined by the convolution of the origin signal and the inverse time 
+term $\frac{1}{\pi t}$: 
 
 \begin{equation}
     y(t) = x(t) * \frac{1}{\pi t} = \int_{-\infty}^{+\infty} 
@@ -224,28 +271,22 @@ It is mathematically proved that the HT of a sine function is its
 corresponding cosine function and vice versa. According to this feature, 
 if a cable is under an ideal VIV situation, i.e., the original acceleration 
 signal is a sine function, the projection of its Hilbert analytical 
-signal in the complex plane will be a circle (see Fig.~\ref{fig:proj_hilb}~(a), 
-where all the physical quantities are normalized in advance). Practically, 
-due to the broadband components of the force caused by the vortex and the 
+signal in the complex plane will be a circle. Practically, 
+due to the broadband components of the force caused by vortexes and the 
 influence of environmental noises, the projection of the analytical 
 signal is a ring with an inner radius R1 and outer radius R2, as shown 
-in Fig.~\ref{fig:proj_hilb}~(b).
+in Fig.~\ref{fig:HCH}, where all the physical quantities are 
+normalized in advance.
 
 \begin{figure}[ht]
     \centering
-    \subfigure[Ideal sine function]{
-        \includegraphics[width=0.8\textwidth]{hilbert_ideal_sin.jpg} 
-    }
-    \qquad
-    \subfigure[sine function with noises]{
-        \includegraphics[width=0.8\textwidth]{hilbert_real_sin.jpg}
-    }
+    \includegraphics[width=0.8\textwidth]{HCH.jpg}
     \caption{Projection of the Hilbert analytical signal of a sine 
-            function in a complex plain.}
-    \label{fig:proj_hilb}
+            function with noises in a complex plain.}
+    \label{fig:HCH}
 \end{figure}
 
-To quantify the single-modal feature of VIV, the HCH is defined by 
+According to Fig.~\ref{fig:HCH}, the HCH is defined as 
 
 \begin{equation}
     HCH = \frac{R_1}{R_2},
@@ -253,11 +294,16 @@ To quantify the single-modal feature of VIV, the HCH is defined by
 \end{equation}
 
 where $R1$ and $R2$ represent the inner radius and outer radius 
-displayed in Fig.~\ref{fig:proj_hilb}~(b).
+marked in Fig.~\ref{fig:HCH}.
 
-It is understandable that the more the HCH is closer to one, the more 
-similar the ring is to a circle, and thus the more obvious the emergence 
-of single modal vibration is. 
+It is noticeable that the more an HCH is closer to one, the more 
+similar the corresponding ring resembles a circle, and thus the more 
+likely a single-mode vibration happens. 
+Unlike FFT, HT enables to quantify the DSM without transforming to the 
+spectral domain, all the calculation is processed in the time domain. 
+However, since both PRS and HCH are sufficient 
+to represent the DSM of vibration, there might be some connection between
+these two indicators. Herein, the correlation is roughly estimated. 
 
 % Hollow coefficient of Derivative analytical signal
 
@@ -280,14 +326,23 @@ Transform (DT) is defined as
 which is designed to substitute the HT, while the composite complex 
 signal can still be represented by Eq.~\eqref{eq:comp_sign}.
 
-Overall, such a substitution reduces the time complexity to O(n), which 
-descends from the calculative expense of the numerical differentiation 
-of a time series. The feasibility of this replacement relies on the 
+The feasibility of this replacement relies on the 
 fact that the derivative of a sine function is a cosine function and 
-vice versa. Moreover, one additional matter worth attention is that 
+vice versa. 
+However, one additional matter worth attention is that 
 the new signal derived from the derivative transform should be normalized 
 one more time since this process introduces a multiplier $\omega$, which 
 is the circular frequency of a sine or cosine function. 
+
+As a major advantage, such a substitution optimizes the time complexity 
+from O(nlogn) to O(n), which 
+descends from the time expense of numerical differentiation of a time series. 
+Futhermore, conventional methods applying HT request some additional modification 
+to reduce the adverse influence of end effect, which is inevitably introduced 
+by numerical HT. By contrast, there is no such steps required after DT 
+Comparing with the recursive HT proposed by Dan, D. and Li, H. \cite{dan2022monitoring}, 
+which also reduce both time time complexity and end effect, 
+the DT avoids complex mathematical calculations applying a so-called sampling frame.
 
 Similarly, the projection of the derivative analytical signal of the sine 
 function in a complex plain is shown in Fig 2., where Fig.~\ref{fig:proj_deri}~(a) 
@@ -301,47 +356,61 @@ noise-influenced condition, respectively. HCD is correspondingly defined as
 
 whose variables have identical meanings to those in Eq.~\eqref{eq:HCH}.
 
-\begin{figure}[ht]
-    \centering
-    \subfigure[Ideal sine function]{
-        \includegraphics[width=0.8\textwidth]{derivative_ideal_sin.jpg} 
-    }
-    \qquad
-    \subfigure[sine function with noises]{
-        \includegraphics[width=0.8\textwidth]{derivative_real_sin.jpg}
-    }
-    \caption{Projection of the Derivative analytical signal of the sine 
-            function in a complex plain.}
-    \label{fig:proj_deri}
-\end{figure}
+% \begin{figure}[ht]
+%     \centering
+%     \subfigure[Ideal sine function]{
+%         \includegraphics[width=0.8\textwidth]{derivative_ideal_sin.jpg} 
+%     }
+%     \qquad
+%     \subfigure[sine function with noises]{
+%         \includegraphics[width=0.8\textwidth]{derivative_real_sin.jpg}
+%     }
+%     \caption{Projection of the Derivative analytical signal of the sine 
+%             function in a complex plain.}
+%     \label{fig:proj_deri}
+% \end{figure}
 
-\textcolor{red}{
-    merits: O(n), no end effect, circular queue
-}
-
-\subsection{Sample classification based on probability distribution and 
-        outlier threshold}
+\subsection{Sample partitioning based on probability distribution}
+\label{sec:partition}
 
 \textcolor{red}{
     why lower convex function?
     flowchart!
 }
 
-\subsubsection{Typical distribution of RMS and HCD}
+\subsubsection{Typical distribution of RMS and CCD}
 
-\subsubsection{Logarithm transformation of RMS and HCD to extend data 
-        distribution}
+\subsubsection{Normalized and squared indicators for feature fusion}
 
-\subsubsection{Mixed Feature of TRMS and THCD}
+
+
+
+
+\begin{equation}
+    HCD = \frac{R_1}{R_2},
+    \label{eq:mixed_feature}
+\end{equation}
+
+\begin{equation}
+    HCD = \frac{R_1}{R_2},
+    \label{eq:w_PCA}
+\end{equation}
+
+
+
+
+
+
+
 
 \textcolor{red}{
+    Mixed Feature of SRMS and SCCD
     1. PCD
     if cannot PCD, usually not VIV 
     2. distribution
 }
 
-\subsubsection{Sample partitioning according to the distribution of the 
-        mixed feature}
+\subsubsection{Sample partitioning in the mapped plain based on weighted PCA}
 
 \subsubsection{Probability-based boundary curve in the RMS-HCD plain}
 

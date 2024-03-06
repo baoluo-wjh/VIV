@@ -1,8 +1,6 @@
-*.bbl
-*.spl
-*.synctex.gz
-VIV.pdf
-software/data/*.csv
-software/data/*.jpg
-software/data/*.pdf
-res/deri/*.mat
+VIV.bbl
+VIV.spl
+VIV.synctex.gz
+*.pdf
+software/data/
+software/__pycache__/
