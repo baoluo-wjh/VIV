@@ -3,4 +3,5 @@ VIV.spl
 VIV.synctex.gz
 *.pdf
 software/data/
+software/temp/
 software/__pycache__/

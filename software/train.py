@@ -1,17 +1,20 @@
 import os
 import json
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import pandas as pd
-from scipy.optimize import brentq, fsolve
+from time import time
+from scipy.optimize import minimize, brentq, fsolve
 from concurrent.futures import ProcessPoolExecutor
 # from sklearn.ensemble import IsolationForest
 # from sklearn.neighbors import LocalOutlierFactor
 # from sklearn.svm import OneClassSVM
 # from sklearn.linear_model import SGDOneClassSVM
 
-np.seterr(all="raise")
+# warnings.filterwarnings('error', category=RuntimeWarning)
+np.seterr(all='raise')
 plt.rc('font', family='Times New Roman', size=48)  # 24
 plt.rc('text', usetex = True)
 
@@ -50,112 +53,6 @@ def get_modified_feature(x, trans="norm", eps_t=6, degree=2):
         x_modi = x ** degree
 
     return x_modi
-
-def input_params_to_test_dot(A, B, C):
-    ''' 
-    purpose: input parameters to test_dot
-    params: A - [a3, a2, a1, a0], a3 = sum(s*s*s), a2 = sum(s*s*t)...
-            B - [b2, b1, b0], b2 = sum(s*2), b1 = sum(s*t), b0 = sum(t*t)
-            C - [c1, c0], c1 = sum(s), c0 = sum(t)
-    return: test_dot - test function
-    '''
-
-    a3, a2, a1, a0 = A
-    b2, b1, b0 = B
-    c1, c0 = C
-
-    def test_dot(theta):
-        # vector
-        lambd = np.cos(theta)
-        mu = np.sin(theta)
-        # k = np.array([lambd, mu]).reshape(2, 1)
-        # l = np.array([-mu, lambd]).reshape(2, 1)
-
-        # center
-        sc = (b2*lambd + b1*mu) / (c1*lambd + c0*mu)
-        tc = (b1*lambd + b0*mu) / (c1*lambd + c0*mu)
-
-        # sigma
-        sigma_12 = (a2*lambd+a1*mu) - (b2*lambd+b1*mu)*tc - (b1*lambd+b0*mu)*sc + \
-                (c1*lambd+c0*mu)*sc*tc
-        sigma_11 = (lambd*a3+mu*a2) - 2*(lambd*b2+mu*b1)*sc + (lambd*c1+mu*c0)*sc*sc 
-        sigma_22 = (lambd*a1+mu*a0) - 2*(lambd*b1+mu*b0)*tc + (lambd*c1+mu*c0)*tc*tc 
-        # Sigma = np.array([[sigma_11, sigma_12], 
-        #                   [sigma_12, sigma_22]])
-
-        # unweighted covariance
-        # xc = (XTX @ k) / (eTX @ k)
-        # Sigma = XTX - xc @ eTX - (xc @ eTX).T + n * xc @ xc.T
-
-        # orthogonal
-        # a = l
-        # b = Sigma @ k
-        # cos_phi = (a.T @ b) / (np.linalg.norm(a) * np.linalg.norm(b))
-        # return cos_phi[0, 0]
-        b = np.array([sigma_11*lambd+sigma_12*mu, sigma_12*lambd+sigma_22*mu])
-        b /= np.sqrt((b**2).sum())
-        cos_phi = -mu*b[0] + lambd*b[1]
-        return cos_phi
-    return test_dot
-
-def get_sample_sum(X):
-    ''' 
-    purpose: get sample sum
-    params: X - sample
-    return: A - [a3, a2, a1, a0], a3 = sum(s*s*s), a2 = sum(s*s*t)...
-            B - [b2, b1, b0], b2 = sum(s*2), b1 = sum(s*t), b0 = sum(t*t)
-            C - [c1, c0], c1 = sum(s), c0 = sum(t)
-    '''
-
-    s = X[:, 0]
-    t = X[:, 1]
-    a3 = np.sum(s*s*s)
-    a2 = np.sum(s*s*t)
-    a1 = np.sum(s*t*t)
-    a0 = np.sum(t*t*t)
-    b2 = np.sum(s*s)
-    b1 = np.sum(s*t)
-    b0 = np.sum(t*t)
-    c1 = np.sum(s)
-    c0 = np.sum(t)
-    A = [a3, a2, a1, a0]
-    B = [b2, b1, b0]
-    C = [c1, c0]
-    return A, B, C
-
-def plot_theta_cos(test_dot, theta_opt, pic_path):
-    ''' 
-    purpose: plot all theta within [0, pi/2]
-    params: test_dot - function pointer: input theta, output cos
-            theta_opt - optimized theta
-            pic_path - picture path
-    return: None
-    '''
-
-    theta = np.linspace(0, np.pi/2, 1000, endpoint=True)
-    dot_prod = np.array([test_dot(t) for t in theta])
-    _, ax = plt.subplots(figsize=(20, 10))
-    plt.plot(theta, dot_prod, color="tab:blue", linewidth=4)
-    plt.xlim(0, np.pi/2)
-    plt.ylim(dot_prod.min() - 0.03, dot_prod.max() + 0.03)
-    plt.xlabel("$\\theta$ [rad]", size=64)
-    plt.ylabel("$COS < l, \\Sigma k >$", size=64)
-    plt.xticks(np.pi/12 * np.arange(7), 
-               ["0"] + ["$\\frac{%d}{12} \\pi$" % num for num in np.arange(1, 7)], 
-               fontsize=48)
-    plt.yticks(fontsize=48)
-    ax.yaxis.set_major_formatter(plt.FormatStrFormatter("%.1f"))
-    plt.scatter([theta_opt], [0], s=512, c="tab:orange", marker="*")
-    if theta_opt >= np.pi / 4:
-        plt.text(theta_opt - 0.03, 0, 
-                 "$%.4f \\; (%.4f \\pi)$" % (theta_opt, theta_opt / np.pi), 
-                 ha="right", va="center", fontsize=64, color="tab:green")
-    else:
-        plt.text(theta_opt + 0.03, 0, 
-                 "$%.4f \\; (%.4f \\pi)$" % (theta_opt, theta_opt / np.pi), 
-                 ha="left", va="center", fontsize=64, color="tab:green")
-    plt.savefig(pic_path, bbox_inches="tight", pad_inches=0.05)
-    plt.close()
 
 def get_mixed_feature(X, main_direction):
     ''' 
@@ -256,67 +153,344 @@ def plot_distribution(x, prefix, f_name="MF",
     #             bbox_inches="tight", pad_inches=0.05)
     # plt.close()
 
-def iter_theta(csv_dir, name, X_sqr, pre_sel_prob, init_pre_theta=np.pi/4):
+def get_sample_sum(X):
+    ''' 
+    purpose: get sample sum
+    params: X - sample
+    return: A - [a3, a2, a1, a0], a3 = sum(s*s*s), a2 = sum(s*s*t)...
+            B - [b2, b1, b0], b2 = sum(s*2), b1 = sum(s*t), b0 = sum(t*t)
+            C - [c1, c0], c1 = sum(s), c0 = sum(t)
+            N - number of used samples
+    '''
+
+    s = X[:, 0]
+    t = X[:, 1]
+    a3 = np.sum(s*s*s)
+    a2 = np.sum(s*s*t)
+    a1 = np.sum(s*t*t)
+    a0 = np.sum(t*t*t)
+    b2 = np.sum(s*s)
+    b1 = np.sum(s*t)
+    b0 = np.sum(t*t)
+    c1 = np.sum(s)
+    c0 = np.sum(t)
+    A = [a3, a2, a1, a0]
+    B = [b2, b1, b0]
+    C = [c1, c0]
+    N = s.shape[0]
+    return A, B, C, N
+
+def get_dot_algo(a3, a2, a1, a0, b2, b1, b0, c1, c0, n, thr, theta):
+    ''' 
+    purpose: input parameters to test_dot
+    params: A - [a3, a2, a1, a0], a3 = sum(s*s*s), a2 = sum(s*s*t)...
+            B - [b2, b1, b0], b2 = sum(s*2), b1 = sum(s*t), b0 = sum(t*t)
+            C - [c1, c0], c1 = sum(s), c0 = sum(t)
+            n - number of samples
+            thr - threshold
+            theta - weighted-PCA theta
+    return: test_dot - test function
+    '''
+
+    # direction vector
+    lambd = np.cos(theta)
+    mu = np.sin(theta)
+
+    # centroid
+    sc = (lambd*b2+mu*b1-thr*c1) / (lambd*c1+mu*c0-thr*n)
+    tc = (lambd*b1+mu*b0-thr*c0) / (lambd*c1+mu*c0-thr*n)
+
+    # sigma
+    # Always use thr*n rather than thr! I debugged for three days!
+    sigma_12 = (lambd*a2+mu*a1-thr*b1) - (lambd*b2+mu*b1-thr*c1)*tc - \
+            (lambd*b1+mu*b0-thr*c0)*sc + (lambd*c1+mu*c0-thr*n)*sc*tc 
+    sigma_11 = (lambd*a3+mu*a2-thr*b2) - 2*(lambd*b2+mu*b1-thr*c1)*sc + \
+            (lambd*c1+mu*c0-thr*n)*sc*sc 
+    sigma_22 = (lambd*a1+mu*a0-thr*b0) - 2*(lambd*b1+mu*b0-thr*c0)*tc + \
+            (lambd*c1+mu*c0-thr*n)*tc*tc 
+    # multiplier = (lambd * c1 + mu * c0 - thr * n) / (
+    #     lambd ** 2 * (c1 ** 2 - b2) +\
+    #     mu ** 2 * (c0 ** 2 - b0) +\
+    #     thr ** 2 * (n ** 2 - n) +\
+    #     2 * lambd * mu * (c1 * c0 - b1) -\
+    #     2 * mu * thr * c0 * (n - 1) -\
+    #     2 * thr * lambd * c1 * (n - 1)
+    # )
+    # sigma_11 *= multiplier
+    # sigma_12 *= multiplier
+    # sigma_22 *= multiplier
+
+    # orthogonal
+    b = np.array([sigma_11*lambd+sigma_12*mu, sigma_12*lambd+sigma_22*mu])
+    b /= np.sqrt((b**2).sum())
+    cos_phi = -mu*b[0] + lambd*b[1]
+    return cos_phi
+
+def get_dot_trad(X_sqr, theta, MF_pre_sel=None, pre_sel_prob=0.95):
+    ''' 
+    purpose: get inner product using the traditional method
+    params: X_sqr - squared data
+            theta - extreme percent
+            MF_pre_sel
+            pre_sel_prob - 
+    return: cos < l, Sigma @ k >
+    '''
+
+    # data
+    s = X_sqr[:, 0]
+    t = X_sqr[:, 1]
+    lambd = np.cos(theta)
+    mu = np.sin(theta)
+
+    # weight
+    MF = lambd * s + mu * t
+    if MF_pre_sel:
+        w = MF - MF_pre_sel
+    else:
+        w = np.maximum(0, MF - calc_quantile(MF, pre_sel_prob))
+
+    # inner product
+    sc = np.sum(w * s) / np.sum(w)
+    tc = np.sum(w * t) / np.sum(w)
+    u = s - sc
+    v = t - tc
+    sigma_11 = np.sum(w * u * u)
+    sigma_12 = np.sum(w * u * v)
+    sigma_22 = np.sum(w * v * v)
+    # multiplier = np.sum(w) / (np.sum(w) ** 2 - np.sum(w ** 2))
+    # sigma_11 *= multiplier
+    # sigma_12 *= multiplier
+    # sigma_22 *= multiplier
+    b = np.array([sigma_11*lambd+sigma_12*mu, sigma_12*lambd+sigma_22*mu])
+    b /= np.sqrt((b**2).sum())
+    val = -mu*b[0] + lambd*b[1]
+
+    return val
+
+def brentq_minimize(test_dot, theta_eps):
+    ''' 
+    purpose: get weighted-PCA theta, use brentq and minimize
+    params: test_dot - function pointer: input theta, output cos
+            theta_eps - tolerance for two consecutive theta values
+    return: theta_opt - optimized theta for weighted-PCA 
+    '''
+
+    # create intervals
+    K = 100
+    eps = theta_eps
+    inter_len = np.zeros(K,)
+    n = np.arange(K // 2)
+    B = 6 * (np.pi - 2 * K * eps) / ((K - 2) * (K - 1) * K)
+    inter_len[:K // 2] = eps + B * n ** 2
+    inter_len[K // 2:] = inter_len[K // 2 - 1: : -1]
+    end_p = inter_len.cumsum()
+
+    # brentq method
+    former_r = 0
+    former_f = test_dot(former_r)
+    for i in range(K):
+        r = end_p[i]
+        f = test_dot(r)
+        if former_f * f <= 0:
+            l = former_r
+            theta_opt = brentq(test_dot, l, r, xtol=theta_eps)
+            return theta_opt
+        former_r = r
+        former_f = f
+    
+    # minimize
+    former_r = 0
+    min_f = 6.22
+    min_x = -6.22
+    for i in range(K):
+        l = former_r
+        r = end_p[i]
+        res = minimize(lambda x: np.abs(test_dot(x)), 
+                       x0=l, bounds=[(l, r)], tol=theta_eps)
+        x = res.x[0]
+        f = res.fun
+        if f < min_f:
+            min_f = f
+            min_x = x
+        former_r = r
+    return min_x
+    
+def fsolve_brentq_minimize(test_dot, pre_theta, theta_eps):
+    ''' 
+    purpose: get weighted-PCA theta, use fsolve, brentq, and minimize
+    params: test_dot - function pointer: input theta, output cos
+            pre_theta - initial theta for fsolve
+            theta_eps - tolerance for two consecutive theta values
+    return: theta_opt - optimized theta for weighted-PCA 
+    '''
+
+    # method 1: fsolve
+    theta_opt = fsolve(test_dot, x0=pre_theta, xtol=theta_eps)[0]
+    theta_opt = theta_opt - np.floor(theta_opt/(2*np.pi))*2*np.pi
+    if np.abs(test_dot(theta_opt)) <= theta_eps and theta_opt <= np.pi / 2:
+        return theta_opt
+
+    # method 2 and 3: brentq and minimize
+    return brentq_minimize(test_dot, theta_eps)
+
+def iter_theta(csv_dir, ch_name, X_sqr, pre_sel_prob, 
+               theta_eps, init_pre_theta=0.):
     ''' 
     purpose: iteration to find the final theta (pre_theta = theta_opt)
     params: csv_dir - csv directory
-            name - cable name
+            ch_name - channel name
             X_sqr - squared data
             pre_sel_prob - probability threshold for pre-selection
+            theta_eps - tolerance for two consecutive theta values
             init_pre_theta - initial theta for sample pre-selection 
     return: final_theta - final theta
-            final_MF_pre_sel - MF value for sample pre-selection
-            final_A, final_B, final_C - sample sums
+            MF_pre_sel - MF value for sample pre-selection
+            A, B, C, N - sample sums
     '''
 
     theta_opt_lst = [init_pre_theta]
-    MF_pre_sel_lst = []
-    A_lst = []
-    B_lst = []
-    C_lst = []
     count_iter = 1
-    iter_eps = 1e-4
 
     while True:
         # pre-selection
         pre_theta = theta_opt_lst[-1]
         MF = get_mixed_feature(X_sqr, (np.cos(pre_theta), np.sin(pre_theta)))
         MF_pre_sel = calc_quantile(MF, pre_sel_prob)
-        MF_pre_sel_lst.append(MF_pre_sel)
-        iso_info = (MF > MF_pre_sel)
-        A, B, C = get_sample_sum(X_sqr[iso_info])
-        A_lst.append(A)
-        B_lst.append(B)
-        C_lst.append(C)
+        ign_info = (MF < MF_pre_sel)
+        A, B, C, N = get_sample_sum(X_sqr[~ign_info])
 
         # find the optimal theta
-        test_dot = input_params_to_test_dot(A, B, C)
-        # theta_opt = brentq(test_dot, 0, np.pi/2, xtol=iter_eps)
-        theta_opt = fsolve(test_dot, x0=pre_theta, xtol=iter_eps)[0]
+        test_dot = lambda t: get_dot_algo(*A, *B, *C, N, MF_pre_sel, t)
+        theta_opt = fsolve_brentq_minimize(test_dot, pre_theta, theta_eps)
+        # print(count_iter, pre_theta, theta_opt, test_dot(theta_opt))
 
         # plot theta_vs_cos diagram
-        if csv_dir and name:
+        if csv_dir and ch_name:
             pic_path = os.path.join(csv_dir, "%s-%d-pre_theta=%.4fpi.jpg" \
-                                    % (name, count_iter, pre_theta/np.pi))
+                                    % (ch_name, count_iter, pre_theta/np.pi))
             plot_theta_cos(test_dot, theta_opt, pic_path)
-        
+
+        # compare
+        if np.abs(pre_theta - theta_opt) < theta_eps and \
+                np.abs(test_dot(theta_opt)) < theta_eps:
+            break
+
         # append current theta_opt to theta_opt_lst
         if count_iter <= 5:
             theta_opt_lst.append(theta_opt)
-        else:  
+        elif count_iter <= 15:  
             # double fixed points, very rare, every important!
-            theta_opt_lst.append((theta_opt + pre_theta) / 2)
-        if np.abs(theta_opt - pre_theta) < iter_eps:
-            break
+            theta_opt_lst.append( (theta_opt + pre_theta) / 2 )
+        elif count_iter < 100:
+            # multiple fixed points, very rare, every important!
+            theta_opt_lst.append((sum(theta_opt_lst[-10:]) + theta_opt) / 11)
         else:
-            count_iter += 1
+            # cannot solve, so use get_dot_trad
+            theta = brentq_minimize(
+                lambda t: get_dot_trad(X_sqr, t, None, pre_sel_prob), 
+                theta_eps
+            )
+            MF = get_mixed_feature(X_sqr, (np.cos(theta), np.sin(theta)))
+            MF_pre_sel = calc_quantile(MF, pre_sel_prob)
+            ign_info = (MF < MF_pre_sel)
+            A, B, C, N = get_sample_sum(X_sqr[~ign_info])
+            return theta, MF_pre_sel, A, B, C, N
 
-    final_theta = theta_opt_lst[-1]
-    final_MF_pre_sel = MF_pre_sel_lst[-1]
-    final_A = A_lst[-1]
-    final_B = B_lst[-1]
-    final_C = C_lst[-1]
-    return final_theta, final_MF_pre_sel, final_A, final_B, final_C
+        # next
+        count_iter += 1
+
+    return theta_opt_lst[-1], MF_pre_sel, A, B, C, N
+
+def plot_theta_cos(test_dot, theta_opt, pic_path):
+    ''' 
+    purpose: plot all theta within [0, pi/2]
+    params: test_dot - function pointer: input theta, output cos
+            theta_opt - optimized theta
+            pic_path - picture path
+    return: None
+    '''
+
+    theta = np.linspace(0, np.pi/2, 1001, endpoint=True)
+    dot_prod = np.array([test_dot(t) for t in theta])
+    _, ax = plt.subplots(figsize=(20, 10))
+    plt.plot(theta, dot_prod, color="tab:blue", linewidth=4)
+    plt.xlim(0, np.pi/2)
+    plt.ylim(dot_prod.min() - 0.03, dot_prod.max() + 0.03)
+    plt.xlabel("$\\theta$ [rad]", size=64)
+    plt.ylabel("$COS < l, \\Sigma k >$", size=64)
+    plt.xticks(np.pi/12 * np.arange(7), 
+               ["0"] + ["$\\frac{%d}{12} \\pi$" % num for num in np.arange(1, 7)], 
+               fontsize=48)
+    plt.yticks(fontsize=48)
+    ax.yaxis.set_major_formatter(plt.FormatStrFormatter("%.2f"))
+    x0 = theta_opt
+    y0 = test_dot(x0)
+    plt.scatter([x0], [y0], s=512, c="tab:orange", marker="*")
+    if x0 >= np.pi / 4:
+        plt.text(x0 - 0.03, y0, "$%.4f \\; (%.4f \\pi)$" % (x0, x0 / np.pi), 
+                 ha="right", va="center", fontsize=64, color="tab:green")
+    else:
+        plt.text(x0 + 0.03, y0, "$%.4f \\; (%.4f \\pi)$" % (x0, x0 / np.pi), 
+                 ha="left", va="center", fontsize=64, color="tab:green")
+    plt.savefig(pic_path, bbox_inches="tight", pad_inches=0.05)
+    plt.close()
+
+def plot_theta_cos_trad_vs_algo(X_sqr, pre_sel_prob, test_dot, theta_opt, pic_path):
+    ''' 
+    purpose: plot all theta within [0, pi/2]
+    params: X_sqr - squared data
+            pre_sel_prob - pre-selection probability
+            test_dot - function pointer: input theta, output cos
+            theta_opt - optimized theta
+            pic_path - picture path
+    return: None
+    '''
+
+    # selected data
+    MF = get_mixed_feature(X_sqr, [np.cos(theta_opt), np.sin(theta_opt)])
+    MF_pre_sel = calc_quantile(MF, pre_sel_prob)
+    ign_info = (MF < MF_pre_sel)
+
+    T = np.linspace(0, np.pi/2, 1001, endpoint=True)
+    dot_0 = np.array([test_dot(t) for t in T])
+    dot_1 = np.array([get_dot_trad(X_sqr[~ign_info], t, MF_pre_sel) for t in T])
+    dot_2 = np.array([get_dot_trad(X_sqr, t, None, pre_sel_prob) for t in T])
+    dot_mat = np.c_[dot_0, dot_1, dot_2]
+
+    _, ax = plt.subplots(figsize=(20, 10))
+    leg = []
+    for i, (c, ls) in enumerate(zip(["tab:blue", "tab:red", "tab:cyan"], 
+                                    ["-", ":", "--"])):
+        leg.append(plt.plot(T, dot_mat[:, i], color=c, 
+                            linestyle=ls, linewidth=4)[0])
+    plt.rc('font', size=24)
+    plt.legend(
+        leg, 
+        ["Proposed", "Trad (no ReLU)", "Trad (with ReLU)"],
+        fontsize=32, 
+        loc="best", 
+        title="Same Best $\\theta$ in Different Methods"
+    )
+    plt.xlim(0, np.pi/2)
+    plt.ylim(dot_mat.min() - 0.03, dot_mat.max() + 0.03)
+    plt.xlabel("$\\theta$ [rad]", size=64)
+    plt.ylabel("$COS < l, \\Sigma k >$", size=64)
+    plt.xticks(np.pi/12 * np.arange(7), 
+            ["0"] + ["$\\frac{%d}{12} \\pi$" % num for num in np.arange(1, 7)], 
+            fontsize=48)
+    plt.yticks(fontsize=48)
+    ax.yaxis.set_major_formatter(plt.FormatStrFormatter("%.2f"))
+    x0 = theta_opt
+    y0 = test_dot(x0)
+    plt.scatter([x0], [y0], s=512, c="tab:orange", marker="*")
+    if x0 >= np.pi / 4:
+        plt.text(x0 - 0.03, y0, "$%.4f \\; (%.4f \\pi)$" % (x0, x0 / np.pi), 
+                 ha="right", va="center", fontsize=64, color="tab:green")
+    else:
+        plt.text(x0 + 0.03, y0, "$%.4f \\; (%.4f \\pi)$" % (x0, x0 / np.pi), 
+                 ha="left", va="center", fontsize=64, color="tab:green")
+    plt.savefig(pic_path, bbox_inches="tight", pad_inches=0.05)
+    plt.close()
 
 def plot_classified_sample(X, pic_path, 
                            ign_info, extreme_val, 
@@ -377,21 +551,55 @@ def plot_classified_sample(X, pic_path,
         count = 0
         for (k, b, threshold) in lines:
             count += 1
-            x = np.linspace(0, 1, 1001, endpoint=True)
-            y = k * x + b
-            inner_index = ((y >= 0) & (y <= 1))
             color_used = '#00'+str(hex(int(0xff*(count/num_line))))[2:]+'ff'
-            fr = plt.plot(x[inner_index], y[inner_index], color=color_used, 
-                          linestyle="--", linewidth=4)
+            # x = np.linspace(0, 1, 10001, endpoint=True)
+            # y = k * x + b
+            # inner_index = ((y >= 0) & (y <= 1))
+            # xx = x[inner_index]
+            # yy = y[inner_index]
+            a = -b / k
+            if a <= 1:
+                if b <= 1:
+                    xx = np.array([0, a])
+                    yy = np.array([b, 0])
+                else:
+                    xx = np.array([(1-b)/k, a])
+                    yy = np.array([1, 0])
+            else:
+                if b <= 1:
+                    xx = np.array([0, 1])
+                    yy = np.array([b, k+b])
+                elif k+b <= 1: 
+                    xx = np.array([(1-b)/k, 1])
+                    yy = np.array([1, k+b])
+                else:
+                    xx = np.array([])
+                    yy = np.array([])
+            fr = plt.plot(xx, yy, color=color_used, linestyle="--", linewidth=4)
             leg_1.append(fr[0])
             thresholds.append(threshold)
             if count == 1:
-                a = -b / k
-                length = np.sqrt(a ** 2 + b ** 2)
-                x0 = a / 2
-                y0 = b / 2
-                cos_ = b / length
-                sin_ = a / length
+                if sample_num > 1:
+                    X_ign = X[ign_info]
+                    x = X_ign[:, 0]
+                    y = X_ign[:, 1]
+                    x_ky = x + k * y
+                    c = np.array([x_ky.max(), x_ky.min()])
+                    x_ = (c - k * b) / (k ** 2 + 1)
+                    y_ = (k * c + b) / (k ** 2 + 1)
+                    delta_x = x_[0] - x_[1]
+                    delta_y = y_[1] - y_[0]
+                    x0 = x_.mean()
+                    y0 = y_.mean()
+                else:  # sample_num == 1 or 0
+                    a = -b / k
+                    delta_x = a
+                    delta_y = b
+                    x0 = a / 2
+                    y0 = b / 2
+                length = np.sqrt(delta_x ** 2 + delta_y ** 2)
+                cos_ = delta_y / length
+                sin_ = delta_x / length
                 L = length / 4
                 W = 0.1 * L 
                 key_points = np.array([
@@ -421,7 +629,7 @@ def plot_classified_sample(X, pic_path,
                               title="Probability [\%]")
         if sample_num > 1:
             legend_0 = plt.legend([fr_1[0], fr_2[0], fr_3[0]], 
-                                  ["extreme", "referred", "ignored"], 
+                                  ["Extreme", "Referred", "Ignored"], 
                                   fontsize=48, loc="upper left", 
                                   title="Sample Points")
             plt.gca().add_artist(legend_1)
@@ -436,15 +644,37 @@ def plot_classified_sample(X, pic_path,
         for (i, curves_i) in enumerate(curves):
             for (a, b, mark) in curves_i:
                 count += 1
-                x = np.linspace(0, a, 1001, endpoint=True)
-                y = b * np.sqrt(1 - (x/a) ** 2)
-                if is_normed:
-                    inner_index = (x <= 1) & (y <= 1)
-                else:
-                    inner_index = y <= np.maximum(extreme_val[1], X[:, 1].max())
-                xx = x[inner_index]
-                yy = y[inner_index]
                 color_used ='#00'+str(hex(int(0xff*(count/num_curve))))[2:]+'ff'
+                # x = np.linspace(0, a, 10001, endpoint=True)
+                # y = b * np.sqrt(1 - (x/a) ** 2)
+                # if is_normed:
+                #     inner_index = (x <= 1) & (y <= 1)
+                # else:
+                #     inner_index = y <= np.maximum(extreme_val[1], X[:, 1].max())
+                # xx = x[inner_index]
+                # yy = y[inner_index]
+                f = lambda x: b * np.sqrt(1 - (x/a) ** 2)
+                g = lambda y: a * np.sqrt(1 - (y/b) ** 2)
+                if is_normed:
+                    if a <= 1:
+                        if b <= 1:
+                            xx = np.linspace(0, a, 101, endpoint=True)
+                        else:
+                            xx = np.linspace(g(1), a, 101, endpoint=True)
+                    else:
+                        if b <= 1:
+                            xx = np.linspace(0, 1, 101, endpoint=True)
+                        elif f(1) <= 1:
+                            xx = np.linspace(g(1), 1, 101, endpoint=True)
+                        else:
+                            xx = np.array([])
+                else:
+                    max_y = np.maximum(extreme_val[1], X[:, 1].max())
+                    if b <= max_y:
+                        xx = np.linspace(0, a, 101, endpoint=True)
+                    else:
+                        xx = np.linspace(g(max_y), a, 101, endpoint=True)
+                yy = f(xx)
                 fr = plt.plot(
                     xx, yy, 
                     color=color_used, 
@@ -456,12 +686,14 @@ def plot_classified_sample(X, pic_path,
                 else:  # boundary
                     leg_2.append(fr[0])
                     intercepts.append(mark)
-                    plt.plot([mark], [0.], '*', markersize=32, 
-                             markerfacecolor='w', markeredgecolor=color_used)
-                    if is_normed:
+                    if is_normed and (mark <= 1 or b*np.sqrt(1-(1/a)**2) <= 1):
+                        plt.plot([mark], [0.], '*', markersize=32, 
+                                 markerfacecolor='w', markeredgecolor=color_used)
                         plt.text(mark, -0.02, "%.3f" % mark, ha="center", 
                                  va="top", fontsize=32, color=color_used)
-                    else:
+                    elif not is_normed:
+                        plt.plot([mark], [0.], '*', markersize=32, 
+                                 markerfacecolor='w', markeredgecolor=color_used)
                         plt.text(mark + 5, 0., "(%.0f, 0)" % mark, ha="left", 
                                  va="center", fontsize=32, color=color_used)
         fs = 48 if is_normed else 32
@@ -482,7 +714,7 @@ def plot_classified_sample(X, pic_path,
         plt.gca().add_artist(legend_1)
         if sample_num > 1:
             legend_0 = plt.legend([fr_1[0], fr_2[0], fr_3[0]], 
-                                  ["extreme", "referred", "ignored"], 
+                                  ["Extreme", "Referred", "Ignored"], 
                                   fontsize=fs, loc="upper left", 
                                   title="Sample Points")
             plt.gca().add_artist(legend_2)
@@ -496,8 +728,9 @@ def plot_classified_sample(X, pic_path,
 def save_result(csv_dir, csv_file, suffix: str, 
                 X, 
                 extreme_val,
+                pre_sel_prob, 
                 intercepts, thresholds, 
-                final_theta, MF_pre_sel, A, B, C):
+                final_theta, MF_pre_sel, A, B, C, N):
     ''' 
     purpose: partitions samples in the training set
     params: csv_dir - csv directory
@@ -505,9 +738,10 @@ def save_result(csv_dir, csv_file, suffix: str,
             suffix - "train" or "test"
             X - raw data
             extreme_val - [extreme_RMS, extreme_CCD]
+            pre_sel_prob - pre-selection probability
             intercepts - value of x when y == 0, in the (RMS, CCD) plain
             thresholds - probability thresholds of the MF
-            final_theta, MF_pre_sel, A, B, C - parameters
+            final_theta, MF_pre_sel, A, B, C, N - parameters
     return: None
     '''
 
@@ -526,13 +760,23 @@ def save_result(csv_dir, csv_file, suffix: str,
     alpha = np.cos(final_theta)
     beta = np.sin(final_theta)
     MF = get_mixed_feature(X_sqr, (alpha, beta))
-    ign_info = (MF <= MF_pre_sel)
+    ign_info = (MF < MF_pre_sel)
     Ks_1 = np.array([calc_quantile(MF, threshold) for threshold in thresholds])
 
     # plot theta_vs_cos diagram for the final_theta
     name = csv_file.rsplit('.', 1)[0]
-    plot_theta_cos(input_params_to_test_dot(A, B, C), final_theta, 
-            os.path.join(csv_dir, f"{name}-theta-{suffix}.jpg"))
+    # plot_theta_cos(
+    #     lambda t: get_dot_algo(*A, *B, *C, N, MF_pre_sel, t),
+    #     final_theta, 
+    #     os.path.join(csv_dir, f"{name}-theta-{suffix}.jpg")
+    # )
+    plot_theta_cos_trad_vs_algo(
+        X_sqr, 
+        pre_sel_prob, 
+        lambda t: get_dot_algo(*A, *B, *C, N, MF_pre_sel, t),
+        final_theta, 
+        os.path.join(csv_dir, f"{name}-theta-{suffix}.jpg")
+    )
 
     # plot classification in the (SRMS, SCCD) plain
     lines = [[-alpha/beta, K/beta, threshold] for (K, threshold) in zip(Ks_1, thresholds)]
@@ -555,16 +799,16 @@ def save_result(csv_dir, csv_file, suffix: str,
     curves_4 = [[np.sqrt(K/alpha), np.sqrt(K/beta), float(intercept / extreme_RMS)] \
             for (K, intercept) in zip(Ks_2, intercepts)]
 
-    # plot classification in the (NRMS, NCCD) plain
-    plot_classified_sample(
-        np.c_[NRMS, NCCD], 
-        os.path.join(csv_dir, f"{name}-norm-{suffix}.jpg"),
-        ign_info, 
-        [1., 1.], 
-        is_normed=True,
-        labels=["NRMS", "NCCD"],
-        curves=[curves_3, curves_4],  # these curves are in the (NRMS, NCCD) plain
-    )
+    # # plot classification in the (NRMS, NCCD) plain
+    # plot_classified_sample(
+    #     np.c_[NRMS, NCCD], 
+    #     os.path.join(csv_dir, f"{name}-norm-{suffix}.jpg"),
+    #     ign_info, 
+    #     [1., 1.], 
+    #     is_normed=True,
+    #     labels=["NRMS", "NCCD"],
+    #     curves=[curves_3, curves_4],  # these curves are in the (NRMS, NCCD) plain
+    # )
 
     # get curves in the (RMS, CCD) plain
     curves_1 = [[extreme_RMS * np.sqrt(K/alpha), extreme_CCD * np.sqrt(K/beta), 
@@ -584,7 +828,7 @@ def save_result(csv_dir, csv_file, suffix: str,
     )
 
     # save trained results
-    sample_sum = [A, B, C]
+    sample_sum = [A, B, C, N]
     data2save = {"final_theta": final_theta, 
                  "MF_pre_sel": MF_pre_sel,
                  "sample_sum": sample_sum, 
@@ -598,11 +842,12 @@ def save_result(csv_dir, csv_file, suffix: str,
 def train(csv_dir, 
           ch_name, 
           suffix, 
-          train_percent=0.8, 
-          extreme_percent=1e-4, 
-          pre_sel_prob=0.95, 
-          intercepts=np.array([100, 200]), 
-          thresholds=np.array([0.95, 0.99])):
+          train_percent, 
+          extreme_percent, 
+          pre_sel_prob, 
+          theta_eps,
+          intercepts, 
+          thresholds):
     ''' 
     purpose: partitions samples in the training set
     params: csv_dir - csv directory
@@ -611,13 +856,13 @@ def train(csv_dir,
             train_percent - the percent of the train data
             extreme_percent - extreme percent
             pre_sel_prob - pre-selection probability
+            theta_eps - tolerance for two consecutive theta values
             intercepts - the value of x when y == 0
             thresholds - probability thresholds of the MF
     return: None
     '''
 
     # get cable name and ext
-    name = ch_name
     csv_file = f"{ch_name}.csv"
 
     # get train samples 
@@ -654,32 +899,50 @@ def train(csv_dir,
     # iso_info = OneClassSVM(nu=0.001, kernel="poly", degree=1, cache_size=2000).fit_predict(X_sqr)
     # iso_info = SGDOneClassSVM(nu=0.001).fit_predict(X_sqr)
 
-    # get main direction in the sqr plain through iteration
-    final_theta, MF_pre_sel, A, B, C = iter_theta("", "", X_sqr, pre_sel_prob)
+    # get main parameters in the sqr plain through iteration
+    # final_theta, MF_pre_sel, A, B, C, N = \
+    #         iter_theta("", "", X_sqr, pre_sel_prob, theta_eps)
+    final_theta = brentq_minimize(
+        lambda t: get_dot_trad(X_sqr, t, None, pre_sel_prob), 
+        theta_eps
+    )
+    MF = get_mixed_feature(X_sqr, (np.cos(final_theta), np.sin(final_theta)))
+    MF_pre_sel = calc_quantile(MF, pre_sel_prob)
+    ign_info = (MF < MF_pre_sel)
+    A, B, C, N = get_sample_sum(X_sqr[~ign_info])
 
     # save results
     save_result(csv_dir, csv_file, suffix, 
-                X, 
+                X_train, 
                 [extreme_RMS, extreme_CCD],
+                pre_sel_prob, 
                 intercepts, thresholds, 
-                final_theta, MF_pre_sel, A, B, C)
+                final_theta, MF_pre_sel, A, B, C, N)
 
 def main():
+    # hyper-parameter
     csv_dir = "./data"
     suffix = "train"
     train_percent = 0.75
-    extreme_percent = 1e-4
-    pre_sel_prob = 0.95
-    thresholds = np.array([0.97, 0.99])
+    extreme_percent = 1e-4  # 0.997 -> 0.003=3e-3 -> 3e-4 -> 1e-4
+    pre_sel_prob = 0.90
+    theta_eps = 1e-4
     intercepts = np.array([100, 200])  
+    thresholds = np.array([0.95, 0.97, 0.99])
+    all_channel = ["ch%02d" % (i+1) for i in range(36)]
+    # VIV channel: ["ch02", "ch12", "ch20", "ch25", "ch26", "ch27", "ch36"]
+    sel_channel = all_channel
+
+    t0 = time()
     pool = ProcessPoolExecutor()  # max_workers=1
-    for ch_name in ["ch%02d" % (i+1) for i in range(36)]:
-        if ch_name not in ["ch02"]:  # "ch04", "ch12", "ch20"
+    for ch_name in all_channel:
+        if ch_name not in sel_channel:  
             continue
-        pool.submit(train, csv_dir, ch_name, suffix, train_percent, \
-                    extreme_percent, pre_sel_prob, intercepts, thresholds)
+        pool.submit(train, csv_dir, ch_name, suffix, 
+                    train_percent, extreme_percent, 
+                    pre_sel_prob, theta_eps, intercepts, thresholds)
     pool.shutdown(True)
+    print(time() - t0)
 
 if __name__ == "__main__":
     main()
-    

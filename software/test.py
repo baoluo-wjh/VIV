@@ -3,12 +3,11 @@ import json
 import numpy as np
 from time import time
 from scipy.io import loadmat
-from scipy.optimize import brentq, fsolve
 from concurrent.futures import ProcessPoolExecutor
-from sortedcontainers import SortedSet, SortedList
+from sortedcontainers import SortedList, SortedSet
 from calc import calc_VIV_s
-from train import get_sample, plot_classified_sample, input_params_to_test_dot, \
-        iter_theta, save_result, train
+from train import get_sample, get_dot_algo, fsolve_brentq_minimize, \
+        iter_theta, plot_classified_sample, save_result, train
 
 def load_params(csv_dir, ch: str):
     ''' 
@@ -202,9 +201,10 @@ def modify_container(ATree, BVec, val, extreme_percent, total_samples) -> bool:
 def update(X,
            extreme_percent,
            pre_sel_prob,
-           X_sqr_all,
-           ATree_RMS, BVec_RMS, ATree_CCD, BVec_CCD, 
-           old_params, 
+           theta_eps,
+           X_sqr_all,                                 # update
+           ATree_RMS, BVec_RMS, ATree_CCD, BVec_CCD,  # update
+           old_params,                                # update
            rms, ccd,
            total_samples):
     ''' 
@@ -218,6 +218,8 @@ def update(X,
         extreme percent
     pre_sel_prob : float
         pre-selection probability
+    theta_eps : float
+        tolerance for two consecutive theta values
     X_sqr_all : 
         [NRMS**2, NCCD**2], length = num of all the train and test data
     ATree_RMS, BVec_RMS, ATree_CCD, BVec_CCD : 
@@ -231,7 +233,7 @@ def update(X,
     '''
 
     old_theta, old_MF_pre_sel, old_sample_sum, old_extreme_val = old_params
-    old_A, old_B, old_C = old_sample_sum
+    old_A, old_B, old_C, old_N = old_sample_sum
 
     # modify the container and check whether the extreme value changes
     extreme_RMS_changed = modify_container(ATree_RMS, BVec_RMS, rms, 
@@ -253,12 +255,12 @@ def update(X,
             X_sqr_all[:current_index, 1] = \
                     np.minimum(1, X[:current_index, 1] / extreme_CCD) ** 2
         X_sqr_curr = X_sqr_all[:current_index]
-        final_theta, final_MF_pre_sel, final_A, final_B, final_C = \
-                iter_theta("", "", X_sqr_curr, pre_sel_prob, old_theta)
+        final_theta, final_MF_pre_sel, final_A, final_B, final_C, final_N = \
+                iter_theta("", "", X_sqr_curr, pre_sel_prob, theta_eps, old_theta)
         # change old_params
         old_params[0] = final_theta
         old_params[1] = final_MF_pre_sel
-        old_params[2] = [final_A, final_B, final_C]
+        old_params[2] = [final_A, final_B, final_C, final_N]
         old_params[3] = [extreme_RMS, extreme_CCD]
     else:
         srms = np.minimum(1, rms / old_extreme_val[0]) ** 2
@@ -269,32 +271,40 @@ def update(X,
         mf = srms * np.cos(old_theta) + sccd * np.sin(old_theta)
         if mf <= old_MF_pre_sel:
             return
-        s = srms
-        t = sccd
-        a3 = old_A[3] + s*s*s 
-        a2 = old_A[2] + s*s*t 
-        a1 = old_A[1] + s*t*t 
-        a0 = old_A[0] + t*t*t 
-        b2 = old_B[2] + s*s
-        b1 = old_B[1] + s*t
-        b0 = old_B[0] + t*t
-        c1 = old_C[1] + s
-        c0 = old_C[0] + t
-        A = [a3, a2, a1, a0]
-        B = [b2, b1, b0]
-        C = [c1, c0]
-        iter_eps = 1e-4
-        test_dot = input_params_to_test_dot(A, B, C)
-        theta_opt = fsolve(test_dot, x0=old_theta, xtol=iter_eps)[0]
-        if np.abs(theta_opt - old_theta) < iter_eps:
-            old_params[2] = [A, B, C]
-            return
+        
+        # ##############################
+        # # demonstrates limited effects
+        # s = srms
+        # t = sccd
+        # a3 = old_A[3] + s*s*s 
+        # a2 = old_A[2] + s*s*t 
+        # a1 = old_A[1] + s*t*t 
+        # a0 = old_A[0] + t*t*t 
+        # b2 = old_B[2] + s*s
+        # b1 = old_B[1] + s*t
+        # b0 = old_B[0] + t*t
+        # c1 = old_C[1] + s
+        # c0 = old_C[0] + t
+        # A = [a3, a2, a1, a0]
+        # B = [b2, b1, b0]
+        # C = [c1, c0]
+        # N = old_N + 1
+
+        # test_dot = lambda t: get_dot_algo(*A, *B, *C, N, old_MF_pre_sel, t)
+        # theta_opt = fsolve_brentq_minimize(test_dot, old_theta, theta_eps)
+
+        # if np.abs(theta_opt - old_theta) < theta_eps:
+        #     old_params[2] = [A, B, C, N]
+        #     return
+        # ##############################
+        
         X_sqr_curr = X_sqr_all[:current_index]
-        final_theta, final_MF_pre_sel, final_A, final_B, final_C = \
-                iter_theta("", "", X_sqr_curr, pre_sel_prob, theta_opt)
+        # Do not use theta_opt as initial theta, instead, use old_theta!
+        final_theta, final_MF_pre_sel, final_A, final_B, final_C, final_N = \
+                iter_theta("", "", X_sqr_curr, pre_sel_prob, theta_eps, old_theta)  
         old_params[0] = final_theta
         old_params[1] = final_MF_pre_sel
-        old_params[2] = [final_A, final_B, final_C]
+        old_params[2] = [final_A, final_B, final_C, final_N]
 
 def test(csv_dir, 
          ch_name, 
@@ -302,6 +312,7 @@ def test(csv_dir,
          train_percent, 
          extreme_percent, 
          pre_sel_prob, 
+         theta_eps,
          intercepts, 
          thresholds):
     ''' 
@@ -312,6 +323,7 @@ def test(csv_dir,
             train_percent - the percent of the train data
             extreme_percent - extreme percent
             pre_sel_prob - pre-selection probability
+            theta_eps - tolerance for two consecutive theta values
             intercepts - the value of x when y == 0
             thresholds - probability thresholds of the MF
     return: None
@@ -349,6 +361,7 @@ def test(csv_dir,
             X,
             extreme_percent,
             pre_sel_prob,
+            theta_eps,
             X_sqr_all,
             ATree_RMS, BVec_RMS, ATree_CCD, BVec_CCD, 
             old_params, 
@@ -358,24 +371,26 @@ def test(csv_dir,
         
     # save results    
     # old_params = [final_theta, MF_pre_sel, sample_sum, extreme_val]
-    # sample_sum = [A, B, C]
-    A, B, C = old_params[2]
+    # old_params[2] == sample_sum == [A, B, C, N]
     save_result(csv_dir, csv_file, suffix, 
                 X, 
                 old_params[3],
+                pre_sel_prob, 
                 intercepts, thresholds, 
-                old_params[0], old_params[1], A, B, C)
+                old_params[0], old_params[1], *old_params[2])
 
 def main():
     # hyper-parameter
     csv_dir = "./data"
-    train_percent = 0.9  # [0.75, 0.8, 0.9, 0.95, 0.98, 0.99]
+    train_percent = 0.75  # [0.75, 0.8, 0.9, 0.95, 0.98, 0.99]
     extreme_percent = 1e-4
-    pre_sel_prob = 0.95
-    thresholds = np.array([0.97, 0.99])
+    pre_sel_prob = 0.90
+    theta_eps = 1e-4
     intercepts = np.array([100, 200])  
+    thresholds = np.array([0.95, 0.97, 0.99])
     all_channel = ["ch%02d" % (i+1) for i in range(36)]
-    sel_channel = ["ch02", "ch12", "ch20"]  # "ch04"
+    # VIV channel: ["ch02", "ch12", "ch20", "ch25", "ch26", "ch27", "ch36"]
+    sel_channel = all_channel
 
     # clear
     del_lst = []
@@ -391,10 +406,12 @@ def main():
     for ch_name in all_channel:
         if ch_name not in sel_channel:  # "ch02", "ch04", "ch12", "ch20"
             continue
-        pool_train.submit(train, csv_dir, ch_name, "train", train_percent, \
-                          extreme_percent, pre_sel_prob, intercepts, thresholds)
-        pool_train.submit(train, csv_dir, ch_name, "test-direct", 1., \
-                          extreme_percent, pre_sel_prob, intercepts, thresholds)
+        pool_train.submit(train, csv_dir, ch_name, "train", 
+                          train_percent, extreme_percent, 
+                          pre_sel_prob, theta_eps, intercepts, thresholds)
+        pool_train.submit(train, csv_dir, ch_name, "test-direct", 
+                          1., extreme_percent, 
+                          pre_sel_prob, theta_eps, intercepts, thresholds)
     pool_train.shutdown(True)
     print(time() - t0)
 
@@ -404,8 +421,9 @@ def main():
     for ch_name in all_channel:
         if ch_name not in sel_channel:
             continue
-        pool_test.submit(test, csv_dir, ch_name, "test-iterate", train_percent, \
-                         extreme_percent, pre_sel_prob, intercepts, thresholds)
+        pool_test.submit(test, csv_dir, ch_name, "test-iterate", 
+                         train_percent, extreme_percent, pre_sel_prob, 
+                         theta_eps, intercepts, thresholds)
     pool_test.shutdown(True)
     print(time() - t0)
 
