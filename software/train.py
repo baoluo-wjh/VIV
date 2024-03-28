@@ -1,6 +1,5 @@
 import os
 import json
-import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -13,8 +12,6 @@ from concurrent.futures import ProcessPoolExecutor
 # from sklearn.svm import OneClassSVM
 # from sklearn.linear_model import SGDOneClassSVM
 
-# warnings.filterwarnings('error', category=RuntimeWarning)
-np.seterr(all='raise')
 plt.rc('font', family='Times New Roman', size=48)  # 24
 plt.rc('text', usetex = True)
 
@@ -591,7 +588,7 @@ def plot_classified_sample(X, pic_path,
                     delta_y = y_[1] - y_[0]
                     x0 = x_.mean()
                     y0 = y_.mean()
-                else:  # sample_num == 1 or 0
+                else:  # sample_num == 1
                     a = -b / k
                     delta_x = a
                     delta_y = b
@@ -727,21 +724,28 @@ def plot_classified_sample(X, pic_path,
 
 def save_result(csv_dir, csv_file, suffix: str, 
                 X, 
-                extreme_val,
+                train_percent,
+                extreme_percent,
                 pre_sel_prob, 
-                intercepts, thresholds, 
-                final_theta, MF_pre_sel, A, B, C, N):
+                theta_eps,
+                thresholds, intercepts, 
+                final_theta, MF_pre_sel, 
+                A, B, C, N, 
+                extreme_val):
     ''' 
     purpose: partitions samples in the training set
     params: csv_dir - csv directory
             csv_file - csv file
             suffix - "train" or "test"
             X - raw data
-            extreme_val - [extreme_RMS, extreme_CCD]
+            train_percent - percent of train data
+            extreme_percent - percent of extreme samples
             pre_sel_prob - pre-selection probability
-            intercepts - value of x when y == 0, in the (RMS, CCD) plain
+            theta_eps - tolerance for two consecutive theta values
             thresholds - probability thresholds of the MF
+            intercepts - value of x when y == 0, in the (RMS, CCD) plain
             final_theta, MF_pre_sel, A, B, C, N - parameters
+            extreme_val - [extreme_RMS, extreme_CCD]
     return: None
     '''
 
@@ -822,20 +826,27 @@ def save_result(csv_dir, csv_file, suffix: str,
         os.path.join(csv_dir, f"{name}-raw-{suffix}.jpg"),
         ign_info, 
         extreme_val, 
-        is_normed=False,
+        is_normed=False, 
         labels=["RMS [gal]", "CCD"],
         curves=[curves_1, curves_2],  # these curves are in the (RMS, CCD) plain
     )
 
-    # save trained results
-    sample_sum = [A, B, C, N]
-    data2save = {"final_theta": final_theta, 
-                 "MF_pre_sel": MF_pre_sel,
-                 "sample_sum": sample_sum, 
-                 "extreme_val": extreme_val, 
-                 "lines": lines, 
-                 "curves_1": curves_1, 
-                 "curves_2": curves_2,}
+    # save hyper-parameters and trained results
+    data2save = {
+        "train_percent": train_percent,
+        "extreme_percent": extreme_percent,
+        "pre_sel_prob": pre_sel_prob,
+        "theta_eps": theta_eps,
+        "thresholds": list(thresholds),
+        "intercepts": list(intercepts),
+        "final_theta": final_theta, 
+        "MF_pre_sel": MF_pre_sel,
+        "sample_sum": [A, B, C, N], 
+        "extreme_val": extreme_val, 
+        "lines": lines, 
+        "curves_1": curves_1, 
+        "curves_2": curves_2
+    }
     with open(os.path.join(csv_dir, f"{name}-params-{suffix}.json"), 'w') as f:
         json.dump(data2save, f, indent=4)
 
@@ -846,8 +857,8 @@ def train(csv_dir,
           extreme_percent, 
           pre_sel_prob, 
           theta_eps,
-          intercepts, 
-          thresholds):
+          thresholds,
+          intercepts):
     ''' 
     purpose: partitions samples in the training set
     params: csv_dir - csv directory
@@ -857,8 +868,8 @@ def train(csv_dir,
             extreme_percent - extreme percent
             pre_sel_prob - pre-selection probability
             theta_eps - tolerance for two consecutive theta values
-            intercepts - the value of x when y == 0
             thresholds - probability thresholds of the MF
+            intercepts - the value of x when y == 0
     return: None
     '''
 
@@ -914,33 +925,51 @@ def train(csv_dir,
     # save results
     save_result(csv_dir, csv_file, suffix, 
                 X_train, 
-                [extreme_RMS, extreme_CCD],
+                train_percent,
+                extreme_percent,
                 pre_sel_prob, 
-                intercepts, thresholds, 
-                final_theta, MF_pre_sel, A, B, C, N)
+                theta_eps,
+                thresholds, intercepts,  
+                final_theta, MF_pre_sel, 
+                A, B, C, N, 
+                [extreme_RMS, extreme_CCD])
 
 def main():
     # hyper-parameter
     csv_dir = "./data"
-    suffix = "train"
-    train_percent = 0.75
+    train_percent = 0.75  # [0.75, 0.80, 0.90, 0.95, 0.98, 0.99]
     extreme_percent = 1e-4  # 0.997 -> 0.003=3e-3 -> 3e-4 -> 1e-4
     pre_sel_prob = 0.90
     theta_eps = 1e-4
-    intercepts = np.array([100, 200])  
-    thresholds = np.array([0.95, 0.97, 0.99])
+    thresholds = np.array([0.95, 0.99])
+    intercepts = np.array([100., 200.])
     all_channel = ["ch%02d" % (i+1) for i in range(36)]
     # VIV channel: ["ch02", "ch12", "ch20", "ch25", "ch26", "ch27", "ch36"]
     sel_channel = all_channel
 
+    # cpu
+    cpu_num = os.cpu_count()
+    mw = None
+    if cpu_num <= 8:
+        mw = 3
+    elif cpu_num <= 32:
+        mw = 6
+
+    # clear
+    for del_file in os.listdir(csv_dir):
+        if del_file.rsplit('.', 1)[-1] in ["jpg", "pdf", "json"]:
+            os.remove(os.path.join(csv_dir, del_file))
+
+    # train and test-direct
     t0 = time()
-    pool = ProcessPoolExecutor()  # max_workers=1
-    for ch_name in all_channel:
-        if ch_name not in sel_channel:  
-            continue
-        pool.submit(train, csv_dir, ch_name, suffix, 
-                    train_percent, extreme_percent, 
-                    pre_sel_prob, theta_eps, intercepts, thresholds)
+    pool = ProcessPoolExecutor(max_workers=mw)  # max_workers=1
+    for ch_name in sel_channel:
+        pool.submit(train, csv_dir, ch_name, "train", 
+                    train_percent, extreme_percent, pre_sel_prob, 
+                    theta_eps, thresholds, intercepts)
+        pool.submit(train, csv_dir, ch_name, "test-direct", 
+                    1., extreme_percent, pre_sel_prob, 
+                    theta_eps, thresholds, intercepts)
     pool.shutdown(True)
     print(time() - t0)
 

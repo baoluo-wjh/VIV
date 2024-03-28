@@ -1,15 +1,13 @@
 import os
-import warnings
-from time import time
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import Manager
 import numpy as np
-from scipy.io import loadmat
-from h5py import File
 import matplotlib.pyplot as plt
 import pandas as pd
+from time import time
+from concurrent.futures import ProcessPoolExecutor
+from scipy.io import loadmat
+from h5py import File
 from calc import calc_VIV
-warnings.filterwarnings('error')
+
 plt.rc('font', family='Times New Roman')
 plt.rc('text', usetex = True)
 
@@ -51,7 +49,7 @@ def cope_all_mat(mat_list, fs, app_fund_arr, minute_interval=5):
     pool = ProcessPoolExecutor()  # max_workers=1
     for file_path in mat_list:  
         # "../HangZhou/south/2022-12-31 18-VIC.mat"
-        date = file_path.rsplit('/', 1)[-1].split(' ')[0]
+        # date = file_path.rsplit('/', 1)[-1].split(' ')[0]
         # if date != "2022-07-02":
         #     continue
         # if date.split('-')[1] != "01":
@@ -119,7 +117,7 @@ def cope_cable(cable_index, app_fund, fs, minute_interval, acc, feature_2d_lst):
 
         try:
             error_flag, RMS, PRS, HCH, HCD, CCH, CCD, PRSM, HCHM, AHCHM = calc_VIV(
-                acc[interval*i: interval*(i+1)], fs, app_fund
+                acc[interval*i: interval*(i+1)], fs, app_fund, 1/6
             )
         except:
             print(f"cable_index: {cable_index}, time_interval_index: {i}")
@@ -207,6 +205,46 @@ def merge_RMS_PRS_etc(feature_csv_lst, csv_dir):
     for i in range(feature_num):
         os.remove(os.path.join(csv_dir, f"{features[i]}.csv"))
 
+def get_index(csv_file):
+    ''' 
+    purpose: export the index correspondence between raw samples and effective samples
+    params: csv_file - csv file that records all the (RMS, PRS, ...)
+    return: None
+    '''
+
+    sample = pd.read_csv(csv_file).values
+    right_index = (sample[:, 0] > 0)  # RMS > 0
+    index_correspondence = np.zeros(right_index.sum(), dtype=np.int32)
+    j: int = 0
+    for i, v in enumerate(right_index):
+        if v:
+            index_correspondence[j] = i
+            j += 1
+    pd.DataFrame(index_correspondence.reshape(-1, 1)).to_csv(os.path.join(
+        f"{csv_file.rsplit('.', 1)[0]}-index.csv"
+    ), header=None, index=None)
+
+def get_mat_index_table(mat_list):
+    count_row = 0
+    mat_index_table = np.zeros(len(mat_list), dtype=np.int32)
+    for i, mat_file in enumerate(mat_list):
+        try:
+            acc_2d = loadmat(mat_file)["data"].astype(np.float64)  # (50*60*60=180000, 36)
+        except:
+            acc_2d = np.transpose(File(mat_file, 'r')["data"]).astype(np.float64)
+        row_num = acc_2d.astype(np.float64).shape[0] // 3000
+        count_row += row_num
+        mat_index_table[i] = count_row
+        if i % 50 == 0:
+            print(i)
+    return mat_index_table
+
+def get_mat_minute(mat_index_table, mat_list, index):
+    for (i, r) in enumerate(mat_index_table):
+        if index < r:
+            return (mat_list[i].rsplit('/', 1)[-1], 
+                    index - (mat_index_table[i - 1] if i >= 1 else 0))
+
 def main():
     root = "../../raw-data/Tongling"
     fs = 50
@@ -226,12 +264,29 @@ def main():
     # _clear_csv(root) 
     # return
 
-    # step 1: process mat
-    mat_list = sorted(find_all_mat(root))  
-    cope_all_mat(mat_list, fs, app_fund_arr, minute_interval)
-    # step 2: merge
-    feature_csv_lst = find_all_csv(root)
-    merge_RMS_PRS_etc(feature_csv_lst, csv_dir="./data")
+    # # step 1: process mat
+    mat_list = sorted(find_all_mat(root))
+    # cope_all_mat(mat_list, fs, app_fund_arr, minute_interval)
+
+    # # step 2: merge
+    # feature_csv_lst = find_all_csv(root)
+    # merge_RMS_PRS_etc(feature_csv_lst, csv_dir="./data")
+
+    # step 3: get index correspondence
+    all_channel = ["ch%02d" % (i+1) for i in range(36)]
+    for ch_name in all_channel:
+        get_index(f"./data/{ch_name}.csv")
+
+    # step 4: get mat index table
+    mat_index_table = get_mat_index_table(mat_list)
+    pd.DataFrame(mat_index_table.reshape(-1, 1)).to_csv(
+            "./data/mat_index_table.csv", header=None, index=None)
+    
+    # # step 5: get mat and minute through index
+    # mat_index_table = pd.read_csv("./mat_index_table.csv", header=None).values.flatten()
+    # index = 239048
+    # mat_file, minute = get_mat_minute(mat_index_table, mat_list, index)
+    # print(f"mat: {mat_file}, minute: {minute}")
 
 if __name__ == "__main__":
     t1 = time()

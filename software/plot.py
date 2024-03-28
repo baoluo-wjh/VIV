@@ -129,7 +129,7 @@ def plot_ath_spec_deri(pic_path, acc, fs, RMS, HCD, max_A_freq, fund_freq=0.3, t
 
 def main():
     # test calc_feature
-    mat_file = os.path.join(".", "2021-04-23 10-VIC.mat")
+    mat_file = "../res/algorithm/2021-04-23 10-VIC.mat"
     total_acc = loadmat(mat_file)["data"][:, 1]
     total_length = total_acc.shape[0]
     num_sample = total_length // 12
@@ -138,12 +138,12 @@ def main():
     app_fund_freq = 0.59
     m_bar = 1
     L = 1
-    error_flag, RMS, HCD, fund_freq, max_A_freq, max_acc, cable_force = \
+    error_flag, RMS, PRS, HCH, HCD, fund_freq, max_A_freq, max_acc, cable_force = \
             calc_feature(acc, fs, app_fund_freq, m_bar, L, threshold=None)
     print(error_flag, RMS, HCD, fund_freq, max_A_freq, max_acc, cable_force)
 
     # test calc_plot_ath_spec_der
-    pic_path = "./2021-04-23-05min-10min-channel-2"
+    pic_path = "../res/algorithm/2021-04-23-05min-10min-channel-2"
     plot_ath_spec_deri(pic_path, acc, fs, RMS, HCD, max_A_freq, fund_freq)
     
 if __name__ == "__main__":

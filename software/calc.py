@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.fftpack import fft, fftfreq, hilbert
 from scipy.io import loadmat
-from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 plt.rc('font', family='Times New Roman')
 plt.rc('text', usetex = True)
@@ -139,12 +138,13 @@ def calc_modified_sig(acc, fs, fund_freq):
     AMHCH = 0
     return MPRS, MHCH, AMHCH
 
-def calc_VIV(acc, fs, app_fund=0.5):
+def calc_VIV(acc, fs, app_fund=0.5, cut_rate=0.):
     ''' 
     purpose: calculate features of a certain acceleration time history 
     params: acc - time history series of acceleration
             fs - sampling frequency
             app_fund - approximate fundamental frequency
+            cut_rate - cut rate for the Hilbert transform
     return: error_flag = 1 if accelerometer failures happen, else 0
             RMS - root mean square of acc
             PRS - peak ratio of spectrum
@@ -189,8 +189,13 @@ def calc_VIV(acc, fs, app_fund=0.5):
     alpha = 0
     eps = 1e-12
     dt = Ts
-    x = acc / np.abs(acc).max()
-    y = hilbert(x)
+    N = acc.shape[0]
+    n = int(N * cut_rate)
+    y = hilbert(acc)[n: N-n]
+    x = acc[n: N-n].copy()
+    if np.abs(x).max() < eps:
+        return 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    x /= np.abs(x).max()
     if np.abs(y).max() < eps:
         return 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
     y /= np.abs(y).max()
@@ -228,11 +233,12 @@ def calc_VIV(acc, fs, app_fund=0.5):
     # return
     return 0, RMS, PRS, HCH, HCD, CCH, CCD, MPRS, MHCH, AMHCH
 
-def calc_VIV_s(acc, fs):
+def calc_VIV_s(acc, fs, cut_rate=0.):
     ''' 
     purpose: simplified calc_VIV, merely calculate RMS and CCD
     params: acc - time history series of acceleration
             fs - sampling frequency
+            cut_rate - cut rate for the Hilbert transform
     return: error_flag = 1 if accelerometer failures happen, else 0
             RMS - root mean square of acc
             CCD - concentration coefficient of Derivative analytical signal of acc
@@ -244,7 +250,7 @@ def calc_VIV_s(acc, fs):
 
     if np.abs(acc).max() > 9990 or np.abs(acc).max() < 1:
         # accelerometer failures happen, anyone == 9999 or all == 0
-        return 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        return 1, 0, 0
 
     # RMS
     RMS = np.sqrt(np.sum(acc ** 2) / num_sample)
@@ -253,11 +259,16 @@ def calc_VIV_s(acc, fs):
     alpha = 0.
     eps = 1e-12
     dt = Ts
-    x = acc / np.abs(acc).max()
+    N = num_sample
+    n = int(N * cut_rate)
+    x = acc[n: N-n].copy()
     y = calc_derivative(x, dt)
+    if np.abs(x).max() < eps:
+        return 1, 0, 0
+    x /= np.abs(x).max()
     if np.abs(y).max() < eps:
         # accelerometer failures happen, all == const
-        return 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        return 1, 0, 0
     y /= np.abs(y).max()
     center_x = np.mean(x)
     center_y = np.mean(y)
@@ -348,7 +359,8 @@ def calc_feature(acc, fs, app_fund_freq, m_bar, L, threshold=None):
         return error_flag, 0, 0, 0, 0, 0, 0, 0, 0
     
     # RMS and HCD
-    _, RMS, PRS, HCH, HCD = calc_VIV(acc, fs, app_fund_freq)
+    error_flag, RMS, PRS, HCH, HCD, CCH, CCD, MPRS, MHCH, AMHCH = \
+            calc_VIV(acc, fs, app_fund_freq)
 
     # force 
     error_flag, fund_freq, max_A_freq, cable_force = \
@@ -366,9 +378,10 @@ def main():
     acc = loadmat(mat_file)["data"].astype(np.float64)[:, 1]
     N = acc.shape[0] // 20
     a = acc[5*N: 6*N]  # 0*N: 1*N
-    error_flag, RMS, PRS, HCH, HCD, CCH, CCD, PRSM, HCHM, AHCHM = calc_VIV(a, fs, app_fund=0.58)
+    error_flag, RMS, PRS, HCH, HCD, CCH, CCD, PRSM, HCHM, AHCHM = \
+            calc_VIV(a, fs, app_fund=0.58, cut_rate=1/6)
     print(error_flag, RMS, PRS, HCH, HCD, CCH, CCD, PRSM, HCHM, AHCHM)
-    error_flag, RMS, CCD = calc_VIV_s(a, fs)
+    error_flag, RMS, CCD = calc_VIV_s(a, fs, cut_rate=1/6)
     print(error_flag, RMS, CCD)
 
 if __name__ == "__main__":

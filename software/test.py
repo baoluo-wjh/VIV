@@ -4,14 +4,13 @@ import numpy as np
 from time import time
 from scipy.io import loadmat
 from concurrent.futures import ProcessPoolExecutor
-from sortedcontainers import SortedList, SortedSet
+from sortedcontainers import SortedList
 from calc import calc_VIV_s
-from train import get_sample, get_dot_algo, fsolve_brentq_minimize, \
-        iter_theta, plot_classified_sample, save_result, train
+from train import get_sample, iter_theta, plot_classified_sample, save_result
 
 def load_params(csv_dir, ch: str):
     ''' 
-    purpose: load trained result
+    purpose: load hyper-parameters and trained results
     params: csv_dir - csv directory
             ch - cable name
     return: components of data2save (trained result)
@@ -20,15 +19,26 @@ def load_params(csv_dir, ch: str):
     with open(os.path.join(csv_dir, f"{ch}-params-train.json"), 'r') as f:
         data2save = json.load(f)
 
-    final_theta   = data2save["final_theta"]
-    MF_pre_sel    = data2save["MF_pre_sel"]
-    sample_sum    = data2save["sample_sum"]
-    extreme_val   = data2save["extreme_val"]
-    lines         = data2save["lines"]
-    curves_1      = data2save["curves_1"]
-    curves_2      = data2save["curves_2"]
+    # hyper-parameters
+    train_percent   = data2save["train_percent"]
+    extreme_percent = data2save["extreme_percent"]
+    pre_sel_prob    = data2save["pre_sel_prob"]
+    theta_eps       = data2save["theta_eps"]
+    thresholds      = np.array(data2save["thresholds"])
+    intercepts      = np.array(data2save["intercepts"])
 
-    return final_theta, MF_pre_sel, sample_sum, extreme_val, lines, curves_1, curves_2 
+    # trained results
+    final_theta     = data2save["final_theta"]
+    MF_pre_sel      = data2save["MF_pre_sel"]
+    sample_sum      = data2save["sample_sum"]
+    extreme_val     = data2save["extreme_val"]
+    lines           = data2save["lines"]
+    curves_1        = data2save["curves_1"]
+    curves_2        = data2save["curves_2"]
+
+    return train_percent, extreme_percent, pre_sel_prob, theta_eps, \
+            thresholds, intercepts, final_theta, MF_pre_sel, sample_sum, \
+            extreme_val, lines, curves_1, curves_2 
 
 def identify(rms, ccd, curves_1, curves_2) -> str:
     ''' 
@@ -71,10 +81,12 @@ def judge_VIV(warning_level):
 def demo():
     csv_dir = "./data"
     ch = "ch02"
-    final_theta, MF_pre_sel, sample_sum, extreme_val, lines, \
-            curves_1, curves_2  = load_params(csv_dir, ch)
-    print(final_theta, MF_pre_sel, sample_sum, extreme_val, lines, \
-            curves_1, curves_2)
+    train_percent, extreme_percent, pre_sel_prob, theta_eps, \
+            thresholds, intercepts, final_theta, MF_pre_sel, sample_sum, \
+            extreme_val, lines, curves_1, curves_2 = load_params(csv_dir, ch)
+    print(train_percent, extreme_percent, pre_sel_prob, theta_eps, \
+            thresholds, intercepts, final_theta, MF_pre_sel, sample_sum, \
+            extreme_val, lines, curves_1, curves_2)
     
     fs = 50
     # mat_file = "../../raw-data/Tongling/2022-07-01/2022-07-01 00-VIC.mat"
@@ -306,32 +318,19 @@ def update(X,
         old_params[1] = final_MF_pre_sel
         old_params[2] = [final_A, final_B, final_C, final_N]
 
-def test(csv_dir, 
-         ch_name, 
-         suffix, 
-         train_percent, 
-         extreme_percent, 
-         pre_sel_prob, 
-         theta_eps,
-         intercepts, 
-         thresholds):
+def test(csv_dir, ch_name, suffix):
     ''' 
     purpose: partitions samples in the test set and updates boundary parameters
     params: csv_dir - csv directory
             ch_name - channel name
             suffix - "train" or "test"
-            train_percent - the percent of the train data
-            extreme_percent - extreme percent
-            pre_sel_prob - pre-selection probability
-            theta_eps - tolerance for two consecutive theta values
-            intercepts - the value of x when y == 0
-            thresholds - probability thresholds of the MF
     return: None
     '''
 
     # get trained parameters
-    final_theta, MF_pre_sel, sample_sum, extreme_val, lines, \
-            curves_1, curves_2  = load_params(csv_dir, ch_name)
+    train_percent, extreme_percent, pre_sel_prob, theta_eps, \
+            thresholds, intercepts, final_theta, MF_pre_sel, sample_sum, \
+            extreme_val, lines, curves_1, curves_2 = load_params(csv_dir, ch_name)
     
     # containers for extreme value and non-extreme value
     csv_file = f"{ch_name}.csv"
@@ -374,57 +373,32 @@ def test(csv_dir,
     # old_params[2] == sample_sum == [A, B, C, N]
     save_result(csv_dir, csv_file, suffix, 
                 X, 
-                old_params[3],
+                train_percent,
+                extreme_percent,
                 pre_sel_prob, 
-                intercepts, thresholds, 
-                old_params[0], old_params[1], *old_params[2])
+                theta_eps,
+                thresholds, intercepts,
+                old_params[0], old_params[1], *old_params[2], old_params[3])
 
 def main():
-    # hyper-parameter
     csv_dir = "./data"
-    train_percent = 0.75  # [0.75, 0.8, 0.9, 0.95, 0.98, 0.99]
-    extreme_percent = 1e-4
-    pre_sel_prob = 0.90
-    theta_eps = 1e-4
-    intercepts = np.array([100, 200])  
-    thresholds = np.array([0.95, 0.97, 0.99])
     all_channel = ["ch%02d" % (i+1) for i in range(36)]
-    # VIV channel: ["ch02", "ch12", "ch20", "ch25", "ch26", "ch27", "ch36"]
     sel_channel = all_channel
 
-    # clear
-    del_lst = []
-    for del_file in os.listdir(csv_dir):
-        if del_file.rsplit('.', 1)[-1] in ["jpg", "pdf", "json"]:
-            del_lst.append(del_file)
-    for del_file in del_lst:
-        os.remove(os.path.join(csv_dir, del_file))
-
-    # train and test-direct
-    t0 = time()
-    pool_train = ProcessPoolExecutor()  # max_workers=1
-    for ch_name in all_channel:
-        if ch_name not in sel_channel:  # "ch02", "ch04", "ch12", "ch20"
-            continue
-        pool_train.submit(train, csv_dir, ch_name, "train", 
-                          train_percent, extreme_percent, 
-                          pre_sel_prob, theta_eps, intercepts, thresholds)
-        pool_train.submit(train, csv_dir, ch_name, "test-direct", 
-                          1., extreme_percent, 
-                          pre_sel_prob, theta_eps, intercepts, thresholds)
-    pool_train.shutdown(True)
-    print(time() - t0)
+    # cpu
+    cpu_num = os.cpu_count()
+    mw = None
+    if cpu_num <= 8:
+        mw = 3
+    elif cpu_num <= 32:
+        mw = 6
 
     # test-iterate
     t0 = time()
-    pool_test = ProcessPoolExecutor()
-    for ch_name in all_channel:
-        if ch_name not in sel_channel:
-            continue
-        pool_test.submit(test, csv_dir, ch_name, "test-iterate", 
-                         train_percent, extreme_percent, pre_sel_prob, 
-                         theta_eps, intercepts, thresholds)
-    pool_test.shutdown(True)
+    pool = ProcessPoolExecutor(max_workers=mw)
+    for ch_name in sel_channel:
+        pool.submit(test, csv_dir, ch_name, "test-iterate")
+    pool.shutdown(True)
     print(time() - t0)
 
 if __name__ == "__main__":
